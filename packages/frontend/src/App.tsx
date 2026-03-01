@@ -4,6 +4,7 @@ import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
 import InvestorDashboard from './pages/InvestorDashboard'
 import OwnerConsole from './pages/OwnerConsole'
+import Disclosures from './pages/Disclosures'
 import NotFound from './pages/NotFound'
 import Navbar from './components/common/Navbar'
 import Footer from './components/common/Footer'
@@ -19,6 +20,7 @@ function App() {
           <Route path="/properties/:id" element={<PropertyDetail />} />
           <Route path="/dashboard" element={<InvestorDashboard />} />
           <Route path="/owner" element={<OwnerConsole />} />
+          <Route path="/disclosures" element={<Disclosures />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

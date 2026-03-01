@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Router as ExpressRouter } from 'express';
 import { auth, requireRole } from '../middleware/auth.js';
 import {
   getProperty,
@@ -19,11 +19,16 @@ import {
   listMyProfitClaims,
 } from '../controllers/v1/meController.js';
 import {
+  createPlatformFeeIntent,
   createProfitDistributionIntent,
   createPropertyIntent,
+  listPlatformFeeIntents,
+  listProfitDistributionIntents,
+  listPropertyIntents,
 } from '../controllers/v1/adminController.js';
+import { getAdminMetrics } from '../controllers/v1/observabilityController.js';
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -46,5 +51,10 @@ router.get('/me/profit-claims', auth, listMyProfitClaims);
 
 router.post('/admin/properties/intents', auth, requireRole('owner'), createPropertyIntent);
 router.post('/admin/profits/intents', auth, requireRole('owner'), createProfitDistributionIntent);
+router.post('/admin/platform-fees/intents', auth, requireRole('owner'), createPlatformFeeIntent);
+router.get('/admin/properties/intents', auth, requireRole('owner'), listPropertyIntents);
+router.get('/admin/profits/intents', auth, requireRole('owner'), listProfitDistributionIntents);
+router.get('/admin/platform-fees/intents', auth, requireRole('owner'), listPlatformFeeIntents);
+router.get('/admin/metrics', auth, requireRole('owner'), getAdminMetrics);
 
 export default router;

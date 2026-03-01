@@ -1,22 +1,22 @@
 import { Chain, ChainConfig } from '../types/chain';
 
-export const ETHEREUM_MAINNET: Chain = {
-  id: 1,
-  name: 'Ethereum',
-  rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/your-api-key',
+export const BASE_SEPOLIA: Chain = {
+  id: 84532,
+  name: 'Base Sepolia',
+  rpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
   nativeCurrency: {
     name: 'Ether',
     symbol: 'ETH',
     decimals: 18,
   },
-  blockExplorer: 'https://etherscan.io',
-  isTestnet: false,
+  blockExplorer: 'https://sepolia.basescan.org',
+  isTestnet: true,
 };
 
 export const BASE_MAINNET: Chain = {
   id: 8453,
   name: 'Base',
-  rpcUrl: 'https://base-mainnet.g.alchemy.com/v2/your-api-key',
+  rpcUrl: import.meta.env.VITE_BASE_MAINNET_RPC_URL || 'https://mainnet.base.org',
   nativeCurrency: {
     name: 'Ether',
     symbol: 'ETH',
@@ -26,23 +26,9 @@ export const BASE_MAINNET: Chain = {
   isTestnet: false,
 };
 
-export const CANTON_NETWORK: Chain = {
-  id: 9000,
-  name: 'Canton',
-  rpcUrl: import.meta.env.VITE_CANTON_RPC_URL || 'https://canton-rpc-placeholder.com', // Replace with actual RPC URL
-  nativeCurrency: {
-    name: 'Canton Coin',
-    symbol: 'CC',
-    decimals: 18,
-  },
-  blockExplorer: import.meta.env.VITE_CANTON_EXPLORER_URL || 'https://canton-explorer-placeholder.com', // Replace with actual explorer URL
-  isTestnet: false,
-};
-
 export const SUPPORTED_CHAINS: ChainConfig = {
-  1: ETHEREUM_MAINNET,
+  84532: BASE_SEPOLIA,
   8453: BASE_MAINNET,
-  9000: CANTON_NETWORK,
 };
 
-export const DEFAULT_CHAIN_ID = 1;
+export const DEFAULT_CHAIN_ID = 84532;

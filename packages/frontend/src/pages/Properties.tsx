@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchProperties, PropertyResponse } from '../lib/api';
 
 export default function Properties() {
@@ -43,9 +44,9 @@ export default function Properties() {
       <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow mb-6">
         <div className="grid md:grid-cols-4 gap-4">
           <select className="px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600">
-            <option>All Networks</option>
-            <option>Sepolia</option>
+            <option>Base Networks</option>
             <option>Base Sepolia</option>
+            <option>Base Mainnet</option>
           </select>
           <input
             type="text"
@@ -82,7 +83,7 @@ export default function Properties() {
       <div className="grid md:grid-cols-3 gap-6">
         {properties.map((property) => (
           <div
-            key={property.id}
+            key={property.propertyId}
             className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden"
           >
             <div className="h-48 bg-gray-300 dark:bg-gray-700"></div>
@@ -93,11 +94,22 @@ export default function Properties() {
               <p className="text-gray-600 dark:text-gray-300 mb-4">
                 {property.description}
               </p>
+              <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+                Platform fee:{' '}
+                {property.platformFeeBps === null
+                  ? 'Not available'
+                  : `${(property.platformFeeBps / 100).toFixed(2)}%`}
+              </p>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">{property.chain}</span>
-                <button className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700">
+                <span className="text-sm text-gray-500">
+                  Target: ${(Number(property.targetUsdcBaseUnits) / 1_000_000).toLocaleString()} USDC
+                </span>
+                <Link
+                  to={`/properties/${property.propertyId}`}
+                  className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
+                >
                   View Details
-                </button>
+                </Link>
               </div>
             </div>
           </div>

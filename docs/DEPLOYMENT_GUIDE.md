@@ -1,5 +1,7 @@
 # Testnet Deployment Guide
 
+> Note: This guide is legacy/extended reference. For current `v1` deployment flow, use `docs/DEPLOYMENT.md` first.
+
 ## Overview
 
 This guide provides step-by-step instructions for deploying Homeshare v2 smart contracts to testnet environments. Testing on testnets is essential before mainnet deployment to ensure contracts work correctly and to estimate gas costs.

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../db/index.js';
+import { getCrowdfundFeeInfo } from './crowdfundFee.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
   ValidationError,
@@ -102,6 +103,12 @@ export const listCampaigns = async (req: Request, res: Response) => {
     );
 
     const items = rows.slice(0, limit);
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        const feeInfo = await getCrowdfundFeeInfo(item.campaignAddress);
+        return { ...item, ...feeInfo };
+      })
+    );
     const nextCursor =
       rows.length > limit
         ? {
@@ -110,7 +117,7 @@ export const listCampaigns = async (req: Request, res: Response) => {
           }
         : null;
 
-    return res.json({ campaigns: items, nextCursor });
+    return res.json({ campaigns: enrichedItems, nextCursor });
   } catch (error) {
     return handleError(res, error);
   }
@@ -154,7 +161,8 @@ export const getCampaign = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    return res.json({ campaign });
+    const feeInfo = await getCrowdfundFeeInfo(campaign.campaignAddress);
+    return res.json({ campaign: { ...campaign, ...feeInfo } });
   } catch (error) {
     return handleError(res, error);
   }

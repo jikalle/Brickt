@@ -17,6 +17,17 @@ function warnPlaceholder(key: string, value: string): void {
   console.warn(`⚠️  ${key} is still set to a placeholder value.`);
 }
 
+function parseIntEnv(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 export function validateEnv(): void {
   REQUIRED_ENV.forEach((key) => {
     const value = process.env[key];
@@ -36,6 +47,15 @@ export const env = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? '',
   jwtSecret: process.env.JWT_SECRET ?? '',
-} satisfies Record<string, string | number>;
+  rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+  rateLimitWindowMs: parseIntEnv(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
+  rateLimitMaxRequests: parseIntEnv(process.env.RATE_LIMIT_MAX_REQUESTS, 120),
+  authRateLimitWindowMs: parseIntEnv(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 60_000),
+  authRateLimitMaxRequests: parseIntEnv(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, 20),
+  ownerAllowlist: (process.env.OWNER_ALLOWLIST ?? '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
+};
 
 export type EnvConfig = typeof env;

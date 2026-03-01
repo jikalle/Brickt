@@ -6,6 +6,8 @@ import {
   ValidationError,
   normalizeAddress,
   parseBaseUnits,
+  parseFeeBps,
+  parseLimit,
   validateChainId,
   validatePropertyId,
 } from '../../validators/v1.js';
@@ -23,6 +25,22 @@ const requireAdminAddress = (req: AuthenticatedRequest): string => {
     throw new ValidationError('Unauthorized', 401);
   }
   return normalizeAddress(req.user.address, 'address');
+};
+
+const parseIntentStatus = (value: unknown): 'pending' | 'submitted' | 'confirmed' | 'failed' | null => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const normalized = value.toString().trim().toLowerCase();
+  if (
+    normalized !== 'pending' &&
+    normalized !== 'submitted' &&
+    normalized !== 'confirmed' &&
+    normalized !== 'failed'
+  ) {
+    throw new ValidationError('Invalid status filter');
+  }
+  return normalized;
 };
 
 export const createPropertyIntent = async (req: AuthenticatedRequest, res: Response) => {
@@ -82,7 +100,13 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
         description,
         target_usdc_base_units::text AS "targetUsdcBaseUnits",
         LOWER(crowdfund_contract_address) AS "crowdfundAddress",
-        created_at AS "createdAt"
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
       `,
       {
         replacements: {
@@ -139,7 +163,13 @@ export const createProfitDistributionIntent = async (req: AuthenticatedRequest, 
         property_id AS "propertyId",
         LOWER(profit_distributor_address) AS "profitDistributorAddress",
         usdc_amount_base_units::text AS "usdcAmountBaseUnits",
-        created_at AS "createdAt"
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
       `,
       {
         replacements: {
@@ -155,6 +185,202 @@ export const createProfitDistributionIntent = async (req: AuthenticatedRequest, 
 
     const intent = Array.isArray(rows) ? rows[0] : null;
     return res.status(201).json({ intent });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const createPlatformFeeIntent = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const adminAddress = requireAdminAddress(req);
+    const chainId = validateChainId(req.body.chainId);
+    const campaignAddress = normalizeAddress(
+      req.body.campaignAddress?.toString(),
+      'campaignAddress'
+    );
+    const platformFeeBps = parseFeeBps(req.body.platformFeeBps, 'platformFeeBps');
+    const recipientRaw = req.body.platformFeeRecipient ?? req.body.feeRecipient;
+    const platformFeeRecipient =
+      platformFeeBps === 0
+        ? null
+        : normalizeAddress(recipientRaw?.toString(), 'platformFeeRecipient');
+
+    const [rows] = await sequelize.query(
+      `
+      INSERT INTO platform_fee_intents (
+        id,
+        chain_id,
+        campaign_address,
+        platform_fee_bps,
+        platform_fee_recipient,
+        created_by_address
+      )
+      VALUES (
+        :id,
+        :chainId,
+        :campaignAddress,
+        :platformFeeBps,
+        :platformFeeRecipient,
+        :createdByAddress
+      )
+      RETURNING
+        LOWER(campaign_address) AS "campaignAddress",
+        platform_fee_bps AS "platformFeeBps",
+        LOWER(platform_fee_recipient) AS "platformFeeRecipient",
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      `,
+      {
+        replacements: {
+          id: randomUUID(),
+          chainId,
+          campaignAddress,
+          platformFeeBps,
+          platformFeeRecipient,
+          createdByAddress: adminAddress,
+        },
+      }
+    );
+
+    const intent = Array.isArray(rows) ? rows[0] : null;
+    return res.status(201).json({ intent });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const listPropertyIntents = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const adminAddress = requireAdminAddress(req);
+    const limit = parseLimit(req.query.limit, 20, 200);
+    const status = parseIntentStatus(req.query.status);
+
+    const intents = await sequelize.query(
+      `
+      SELECT
+        id,
+        chain_id AS "chainId",
+        property_id AS "propertyId",
+        name,
+        location,
+        description,
+        target_usdc_base_units::text AS "targetUsdcBaseUnits",
+        LOWER(crowdfund_contract_address) AS "crowdfundAddress",
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        attempt_count AS "attemptCount",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM property_intents
+      WHERE created_by_address = :createdByAddress
+        ${status ? 'AND status = :status' : ''}
+      ORDER BY created_at DESC
+      LIMIT :limit
+      `,
+      {
+        replacements: {
+          createdByAddress: adminAddress,
+          status,
+          limit,
+        },
+      }
+    );
+
+    return res.json({ intents: Array.isArray(intents[0]) ? intents[0] : [] });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const listProfitDistributionIntents = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const adminAddress = requireAdminAddress(req);
+    const limit = parseLimit(req.query.limit, 20, 200);
+    const status = parseIntentStatus(req.query.status);
+
+    const intents = await sequelize.query(
+      `
+      SELECT
+        id,
+        chain_id AS "chainId",
+        property_id AS "propertyId",
+        LOWER(profit_distributor_address) AS "profitDistributorAddress",
+        usdc_amount_base_units::text AS "usdcAmountBaseUnits",
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        attempt_count AS "attemptCount",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM profit_distribution_intents
+      WHERE created_by_address = :createdByAddress
+        ${status ? 'AND status = :status' : ''}
+      ORDER BY created_at DESC
+      LIMIT :limit
+      `,
+      {
+        replacements: {
+          createdByAddress: adminAddress,
+          status,
+          limit,
+        },
+      }
+    );
+
+    return res.json({ intents: Array.isArray(intents[0]) ? intents[0] : [] });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const listPlatformFeeIntents = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const adminAddress = requireAdminAddress(req);
+    const limit = parseLimit(req.query.limit, 20, 200);
+    const status = parseIntentStatus(req.query.status);
+
+    const intents = await sequelize.query(
+      `
+      SELECT
+        id,
+        chain_id AS "chainId",
+        LOWER(campaign_address) AS "campaignAddress",
+        platform_fee_bps AS "platformFeeBps",
+        LOWER(platform_fee_recipient) AS "platformFeeRecipient",
+        status,
+        tx_hash AS "txHash",
+        error_message AS "errorMessage",
+        attempt_count AS "attemptCount",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM platform_fee_intents
+      WHERE created_by_address = :createdByAddress
+        ${status ? 'AND status = :status' : ''}
+      ORDER BY created_at DESC
+      LIMIT :limit
+      `,
+      {
+        replacements: {
+          createdByAddress: adminAddress,
+          status,
+          limit,
+        },
+      }
+    );
+
+    return res.json({ intents: Array.isArray(intents[0]) ? intents[0] : [] });
   } catch (error) {
     return handleError(res, error);
   }

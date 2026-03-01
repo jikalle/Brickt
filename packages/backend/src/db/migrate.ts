@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { QueryTypes } from 'sequelize';
 import { sequelize } from './index.js';
 import '../config/env.js';
 
@@ -18,10 +19,10 @@ async function ensureMigrationsTable(): Promise<void> {
 }
 
 async function getAppliedMigrations(): Promise<Set<string>> {
-  const [rows] = await sequelize.query<{ name: string }>(
-    'SELECT name FROM schema_migrations;'
-  );
-  return new Set(rows.map((row) => row.name));
+  const rows = await sequelize.query<{ name: string }>('SELECT name FROM schema_migrations;', {
+    type: QueryTypes.SELECT,
+  });
+  return new Set(rows.map((row: { name: string }) => row.name));
 }
 
 async function runMigration(name: string, sql: string): Promise<void> {

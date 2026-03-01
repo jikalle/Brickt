@@ -3,544 +3,235 @@
 ## Base URL
 
 ```
-Development: http://localhost:3000/api
-Production: https://api.yourdomain.com/api
+Development: http://localhost:3000/v1
+Production: https://api.yourdomain.com/v1
 ```
+
+## Notes
+
+- Legacy data routes under `/api/properties`, `/api/investments`, `/api/chains`, and `/api/tokens` are removed and return `410 Gone`.
+- Authentication is available at `/v1/auth/*` (legacy alias `/api/auth/*` still works for compatibility).
+- Current indexed data controllers are scoped to Base Sepolia chain ID `84532`.
+- IP-based rate limiting is enabled by default on auth and `/v1` endpoints; over-limit requests return `429`.
 
 ## Authentication
 
-Most endpoints require JWT authentication. Include the token in the Authorization header:
-
-```
-Authorization: Bearer YOUR_JWT_TOKEN
-```
-
-### Get Token
+### Get Nonce
 
 ```http
-POST /api/auth/login
+GET /v1/auth/nonce
 ```
 
-**Request Body:**
+Response:
+
+```json
+{
+  "nonce": "a1b2c3d4...",
+  "ttlSeconds": 600
+}
+```
+
+### Login (Wallet Signature)
+
+```http
+POST /v1/auth/login
+```
+
+Request body:
+
 ```json
 {
   "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
   "signature": "0x...",
-  "message": "Sign-in request for Homeshare",
+  "message": "Homeshare wants you to sign in with your wallet.\nAddress: ...\nChain ID: 84532\nNonce: ...\nIssued At: 2026-02-28T10:00:00.000Z",
   "role": "owner"
 }
 ```
 
-**Response:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "uuid",
-    "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-    "role": "owner"
-  }
-}
-```
+Validation notes:
+- `Address` in the signed message must match `address`.
+- `Chain ID` must be supported (`84532` or `8453`).
+- `Issued At` must be recent (within nonce TTL window).
 
-### Verify Token
+### Verify JWT
 
 ```http
-POST /api/auth/verify
+POST /v1/auth/verify
+Authorization: Bearer <token>
 ```
 
-**Response:**
-```json
-{
-  "valid": true,
-  "user": {
-    "id": "uuid",
-    "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-    "role": "owner"
-  }
-}
-```
-
-## Endpoints
-
-### Health Check
-
-Check API status.
+## Health
 
 ```http
-GET /health
+GET /v1/health
 ```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-15T10:30:00.000Z"
-}
-```
-
----
 
 ## Properties
 
 ### List Properties
 
-Get all properties across all chains. In the current development build, this endpoint returns database records created during runtime.
+```http
+GET /v1/properties?limit=50&cursorPropertyId=prop-001
+```
+
+### Get Property
 
 ```http
-GET /api/properties
+GET /v1/properties/:propertyId
 ```
 
-**Query Parameters:** none
-
-**Response:**
-```json
-{
-  "properties": [
-    {
-      "id": "property_1700000000000_1234",
-      "name": "Luxury Apartment Downtown",
-      "description": "Modern 2BR apartment in city center",
-      "location": "New York, NY",
-      "totalValue": 1000000,
-      "tokenSupply": 100000,
-      "chain": "sepolia",
-      "status": "draft",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "contractMetadata": {
-        "name": "Sepolia Property Token",
-        "symbol": "SPT",
-        "decimals": "18",
-        "totalSupply": "100000000000000000000000",
-        "propertyId": "property-sepolia-1",
-        "totalValue": "1000000000000000000000000"
-      }
-    }
-  ]
-}
-```
-
-### Get Property Details
-
-Get details of a specific property.
+### List Equity Claims for Property
 
 ```http
-GET /api/properties/:id
+GET /v1/properties/:propertyId/equity-claims?limit=50&cursorBlockNumber=123&cursorLogIndex=0
 ```
 
-**Response:**
-```json
-{
-  "property": {
-    "id": "property_1700000000000_1234",
-    "name": "Luxury Apartment Downtown",
-    "description": "Modern 2BR apartment in city center",
-    "location": "New York, NY",
-    "totalValue": 1000000,
-    "tokenSupply": 100000,
-    "chain": "sepolia",
-    "status": "draft",
-    "createdAt": "2024-01-01T00:00:00.000Z",
-    "contractMetadata": {
-      "name": "Sepolia Property Token",
-      "symbol": "SPT",
-      "decimals": "18",
-      "totalSupply": "100000000000000000000000",
-      "propertyId": "property-sepolia-1",
-      "totalValue": "1000000000000000000000000"
-    }
-  }
-}
-```
-
-### Create Property
-
-Create a new property. Requires an authenticated owner token.
+### List Profit Deposits for Property
 
 ```http
-POST /api/properties
+GET /v1/properties/:propertyId/profit-deposits?limit=50&cursorBlockNumber=123&cursorLogIndex=0
 ```
 
-**Request Body:**
+### List Profit Claims for Property
+
+```http
+GET /v1/properties/:propertyId/profit-claims?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+## Campaigns
+
+### List Campaigns
+
+```http
+GET /v1/campaigns?limit=50&cursorStartTime=2026-01-01T00:00:00.000Z&cursorContractAddress=0x...
+```
+
+### Get Campaign
+
+```http
+GET /v1/campaigns/:campaignAddress
+```
+
+### List Campaign Investments
+
+```http
+GET /v1/campaigns/:campaignAddress/investments?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+### List Campaign Refunds
+
+```http
+GET /v1/campaigns/:campaignAddress/refunds?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+## Me (Authenticated)
+
+All endpoints below require:
+
+```http
+Authorization: Bearer <token>
+```
+
+### My Investments
+
+```http
+GET /v1/me/investments?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+### My Equity Claims
+
+```http
+GET /v1/me/equity-claims?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+### My Profit Claims
+
+```http
+GET /v1/me/profit-claims?limit=50&cursorBlockNumber=123&cursorLogIndex=0
+```
+
+## Admin Intents (Owner Role Required)
+
+All endpoints below require:
+
+```http
+Authorization: Bearer <owner_token>
+```
+
+### Create Property Intent
+
+```http
+POST /v1/admin/properties/intents
+```
+
+Request body:
+
 ```json
 {
-  "name": "Luxury Apartment Downtown",
-  "description": "Modern 2BR apartment in city center",
+  "chainId": 84532,
+  "propertyId": "prop-nyc-001",
+  "name": "Downtown Apartment",
   "location": "New York, NY",
-  "totalValue": 1000000,
-  "tokenSupply": 100000,
-  "chain": "sepolia",
-  "status": "draft"
+  "description": "Two-bedroom apartment",
+  "targetUsdcBaseUnits": "1000000000",
+  "crowdfundAddress": "0x..."
 }
 ```
 
-**Response:**
-```json
-{
-  "property": {
-    "id": "property_1700000000000_1234",
-    "name": "Luxury Apartment Downtown",
-    "description": "Modern 2BR apartment in city center",
-    "location": "New York, NY",
-    "totalValue": 1000000,
-    "tokenSupply": 100000,
-    "chain": "sepolia",
-    "status": "draft",
-    "createdAt": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
----
-
-## Investments
-
-### List User Investments
-
-Get all investments. In the current development build, you can optionally filter by investor.
+### List Property Intents
 
 ```http
-GET /api/investments
+GET /v1/admin/properties/intents?status=pending&limit=20
 ```
 
-**Query Parameters:**
-- `investor` (optional): Filter by investor wallet address
-
-**Response:**
-```json
-{
-  "investments": [
-    {
-      "id": "investment_1700000000000_1234",
-      "propertyId": "property_1700000000000_1234",
-      "investor": "0x1234...",
-      "amount": 1000,
-      "tokenAmount": 100,
-      "chain": "sepolia",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "contractMetadata": {
-        "name": "Sepolia Property Token",
-        "symbol": "SPT",
-        "decimals": "18",
-        "totalSupply": "100000000000000000000000",
-        "propertyId": "property-sepolia-1",
-        "totalValue": "1000000000000000000000000"
-      }
-    }
-  ]
-}
-```
-
-### Record Investment
-
-Record a new investment.
+### Create Profit Distribution Intent
 
 ```http
-POST /api/investments
+POST /v1/admin/profits/intents
 ```
 
-**Request Body:**
+Request body:
+
 ```json
 {
-  "propertyId": "property_1700000000000_1234",
-  "investor": "0x1234...",
-  "amount": 1000,
-  "tokenAmount": 100,
-  "chain": "sepolia"
+  "chainId": 84532,
+  "propertyId": "prop-nyc-001",
+  "profitDistributorAddress": "0x...",
+  "usdcAmountBaseUnits": "50000000"
 }
 ```
 
-**Response:**
-```json
-{
-  "investment": {
-    "id": "investment_1700000000000_1234",
-    "propertyId": "property_1700000000000_1234",
-    "investor": "0x1234...",
-    "amount": 1000,
-    "tokenAmount": 100,
-    "chain": "sepolia",
-    "createdAt": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
----
-
-## Chains
-
-### List Supported Chains
-
-Get all supported blockchain networks.
+### List Profit Distribution Intents
 
 ```http
-GET /api/chains
+GET /v1/admin/profits/intents?status=submitted&limit=20
 ```
 
-**Response:**
-```json
-{
-  "chains": [
-    {
-      "id": 1,
-      "name": "Ethereum",
-      "symbol": "ETH",
-      "rpcUrl": "https://...",
-      "blockExplorer": "https://etherscan.io",
-      "isTestnet": false
-    },
-    {
-      "id": 8453,
-      "name": "Base",
-      "symbol": "ETH",
-      "rpcUrl": "https://...",
-      "blockExplorer": "https://basescan.org",
-      "isTestnet": false
-    },
-    {
-      "id": 9000,
-      "name": "Canton",
-      "symbol": "CC",
-      "rpcUrl": "https://...",
-      "blockExplorer": "https://...",
-      "isTestnet": false
-    }
-  ]
-}
-```
-
----
-
-## Tokens
-
-### List Tokens
-
-Get supported tokens, optionally filtered by chain.
+### Create Platform Fee Intent
 
 ```http
-GET /api/tokens?chainId=1
+POST /v1/admin/platform-fees/intents
 ```
 
-**Query Parameters:**
-- `chainId` (optional): Filter by chain ID
+Request body:
 
-**Response:**
 ```json
 {
-  "tokens": [
-    {
-      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "symbol": "USDC",
-      "name": "USD Coin",
-      "decimals": 6,
-      "chainId": 1,
-      "logoUrl": "https://..."
-    },
-    {
-      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-      "symbol": "USDT",
-      "name": "Tether USD",
-      "decimals": 6,
-      "chainId": 1,
-      "logoUrl": "https://..."
-    }
-  ]
+  "chainId": 84532,
+  "campaignAddress": "0x...",
+  "platformFeeBps": 250,
+  "platformFeeRecipient": "0x..."
 }
 ```
 
----
-
-## Error Responses
-
-All endpoints return errors in the following format:
-
-**400 Bad Request:**
-```json
-{
-  "error": "Invalid request",
-  "message": "Property ID is required"
-}
-```
-
-**401 Unauthorized:**
-```json
-{
-  "error": "Authentication required",
-  "message": "No token provided"
-}
-```
-
-**403 Forbidden:**
-```json
-{
-  "error": "Permission denied",
-  "message": "Owner role required"
-}
-```
-
-**404 Not Found:**
-```json
-{
-  "error": "Resource not found",
-  "message": "Property not found"
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "error": "Internal server error",
-  "message": "An unexpected error occurred"
-}
-```
-
----
-
-## Rate Limiting
-
-API requests are rate limited:
-- **Authenticated requests**: 100 requests per minute
-- **Unauthenticated requests**: 20 requests per minute
-
-Rate limit headers are included in responses:
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1705075260
-```
-
----
-
-## Pagination
-
-List endpoints support pagination using query parameters:
+### List Platform Fee Intents
 
 ```http
-GET /api/properties?page=2&limit=20
+GET /v1/admin/platform-fees/intents?status=failed&limit=20
 ```
 
-Response includes pagination metadata:
-```json
-{
-  "data": [...],
-  "pagination": {
-    "page": 2,
-    "limit": 20,
-    "total": 150,
-    "pages": 8
-  }
-}
-```
+### Admin Metrics (Owner Role Required)
 
----
-
-## WebSocket Events
-
-Real-time updates are available via WebSocket connection:
-
-```javascript
-const ws = new WebSocket('ws://localhost:3000');
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  // Handle event
-};
-```
-
-### Event Types
-
-**New Investment:**
-```json
-{
-  "type": "investment.new",
-  "data": {
-    "propertyId": "prop-1",
-    "amount": "1000",
-    "investor": "0x..."
-  }
-}
-```
-
-**Property Updated:**
-```json
-{
-  "type": "property.updated",
-  "data": {
-    "propertyId": "prop-1",
-    "currentFunding": "260000"
-  }
-}
-```
-
-**Campaign Finalized:**
-```json
-{
-  "type": "campaign.finalized",
-  "data": {
-    "propertyId": "prop-1",
-    "totalFunding": "500000"
-  }
-}
-```
-
----
-
-## SDK Usage Examples
-
-### JavaScript/TypeScript
-
-```typescript
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-
-// Get properties
-const { data } = await api.get('/properties', {
-  params: { chainId: 1 }
-});
-
-// Create investment
-await api.post('/investments', {
-  propertyId: 'prop-1',
-  amount: '1000',
-  tokenAddress: '0x...',
-  chainId: 1,
-  txHash: '0x...'
-});
-```
-
-### Python
-
-```python
-import requests
-
-headers = {
-    'Authorization': f'Bearer {token}'
-}
-
-# Get properties
-response = requests.get(
-    'http://localhost:3000/api/properties',
-    params={'chainId': 1},
-    headers=headers
-)
-properties = response.json()
-
-# Create investment
-response = requests.post(
-    'http://localhost:3000/api/investments',
-    json={
-        'propertyId': 'prop-1',
-        'amount': '1000',
-        'tokenAddress': '0x...',
-        'chainId': 1,
-        'txHash': '0x...'
-    },
-    headers=headers
-)
+```http
+GET /v1/admin/metrics
 ```

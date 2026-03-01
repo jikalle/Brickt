@@ -110,6 +110,20 @@ export const parseBaseUnits = (value: unknown, field: string): string => {
   return asString;
 };
 
+export const parseFeeBps = (value: unknown, field = 'platformFeeBps'): number => {
+  if (value === undefined || value === null || value === '') {
+    throw new ValidationError(`Missing ${field}`);
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new ValidationError(`Invalid ${field}`);
+  }
+  if (parsed > 2_000) {
+    throw new ValidationError(`${field} cannot exceed 2000`);
+  }
+  return parsed;
+};
+
 export const validateChainId = (value: unknown): number => {
   if (value === undefined || value === null || value === '') {
     return BASE_SEPOLIA_CHAIN_ID;

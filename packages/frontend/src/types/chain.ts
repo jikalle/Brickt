@@ -1,4 +1,4 @@
-export type ChainId = 1 | 8453 | 9000; // Ethereum, Base, Canton
+export type ChainId = number;
 
 export interface Chain {
   id: ChainId;

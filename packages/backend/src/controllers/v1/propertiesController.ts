@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../db/index.js';
+import { getCrowdfundFeeInfo } from './crowdfundFee.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
   ValidationError,
@@ -102,9 +103,15 @@ export const listProperties = async (req: Request, res: Response) => {
     );
 
     const items = rows.slice(0, limit);
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        const feeInfo = await getCrowdfundFeeInfo(item.crowdfundAddress);
+        return { ...item, ...feeInfo };
+      })
+    );
     const nextCursor = rows.length > limit ? items[items.length - 1]?.propertyId : null;
 
-    return res.json({ properties: items, nextCursor });
+    return res.json({ properties: enrichedItems, nextCursor });
   } catch (error) {
     return handleError(res, error);
   }
@@ -145,7 +152,8 @@ export const getProperty = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Property not found' });
     }
 
-    return res.json({ property });
+    const feeInfo = await getCrowdfundFeeInfo(property.crowdfundAddress);
+    return res.json({ property: { ...property, ...feeInfo } });
   } catch (error) {
     return handleError(res, error);
   }

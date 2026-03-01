@@ -1,0 +1,125 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Promotion target"
+        type: choice
+        required: true
+        options:
+          - staging
+          - production
+      git_ref:
+        description: "Git ref to promote (branch, tag, or SHA)"
+        type: string
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Release Candidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run backend tests
+        run: pnpm --filter @homeshare/backend test
+
+      - name: Build frontend
+        run: pnpm --filter @homeshare/frontend build
+
+      - name: Run contract tests
+        run: pnpm --filter @homeshare/contracts test
+
+  package:
+    name: Build Promotion Artifacts
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        run: pnpm --filter @homeshare/backend build
+
+      - name: Build frontend
+        run: pnpm --filter @homeshare/frontend build
+
+      - name: Compile contracts
+        run: pnpm --filter @homeshare/contracts compile
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: packages/backend/dist
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: packages/frontend/dist
+
+  deploy:
+    name: Deploy (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    needs: package
+    environment: homeshare-${{ inputs.target_environment }}
+    steps:
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: release/backend-dist
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: release/frontend-dist
+
+      - name: Deploy placeholder
+        run: |
+          echo "Deploying ref '${{ inputs.git_ref }}' to '${{ inputs.target_environment }}'."
+          echo "Configure this step with your deployment platform (PM2, container registry, or host API)."

@@ -12,6 +12,10 @@ export interface AuthenticatedRequest extends Request {
 
 export const auth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    if (!env.jwtSecret || env.jwtSecret.length < 16) {
+      return res.status(500).json({ error: 'JWT secret is not configured securely' });
+    }
+
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {

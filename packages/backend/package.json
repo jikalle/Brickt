@@ -7,8 +7,15 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
+    "process:platform-fees": "pnpm build && node scripts/process-platform-fee-intents.mjs",
+    "process:properties": "pnpm build && node scripts/process-property-intents.mjs",
+    "process:properties:watch": "pnpm build && PROPERTY_INTENT_CONTINUOUS=true node scripts/process-property-intents.mjs",
+    "reconcile:platform-fees": "pnpm build && node scripts/reconcile-platform-fee-intents.mjs",
+    "intents:manage": "pnpm build && node scripts/manage-intents.mjs",
+    "intents:alert": "pnpm build && node scripts/alert-intents.mjs",
+    "observability:snapshot": "pnpm build && node scripts/observability-snapshot.mjs",
     "lint": "eslint . --ext .ts",
-    "test": "echo \"No tests yet\"",
+    "test": "pnpm build && node scripts/test-v1.mjs",
     "check:v1": "tsx scripts/check-v1.ts"
   },
   "dependencies": {

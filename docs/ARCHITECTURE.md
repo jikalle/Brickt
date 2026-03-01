@@ -2,165 +2,95 @@
 
 ## Overview
 
-Homeshare v2 is a decentralized real estate crowdfunding platform built as a monorepo with three main packages: frontend, backend, and smart contracts. The platform supports multiple blockchain networks and payment tokens.
+Homeshare v2 is a Base-native real-estate crowdfunding platform. The current `v1` stack is centered on Base Sepolia (`84532`) for indexed data and API validation, with Base mainnet as the launch target.
 
-## System Architecture
+The product model:
+- Investors contribute USDC to campaign contracts.
+- Investors claim equity tokens after successful campaigns.
+- Property owners deposit USDC profits for token-holder claims.
+- Platform monetization comes from campaign-level platform fees configured onchain.
 
-### High-Level Architecture
+## High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Frontend                             │
-│  (React + TypeScript + Vite + Wagmi + Redux)                │
+│ Frontend (React + Vite + TypeScript)                       │
+│ - Property browsing, dashboards, owner console             │
+│ - Wallet auth via Sign in with Base                        │
 └──────────────────┬──────────────────────────────────────────┘
-                   │
-                   │ REST API / Web3
-                   │
+                   │ REST API + wallet signatures
 ┌──────────────────┴──────────────────────────────────────────┐
-│                         Backend                              │
-│  (Node.js + Express + TypeScript + PostgreSQL)              │
+│ Backend (Express + TypeScript + PostgreSQL)                │
+│ - /v1 API (query + auth + admin intent creation)           │
+│ - Indexer (onchain logs -> DB read model)                  │
+│ - Operator jobs (intent execution, e.g. platform fees)     │
 └──────────────────┬──────────────────────────────────────────┘
-                   │
-                   │ Web3 RPC
-                   │
+                   │ RPC
 ┌──────────────────┴──────────────────────────────────────────┐
-│                    Smart Contracts                           │
-│         (Ethereum, Base, Canton Networks)                    │
+│ Smart Contracts (Base)                                     │
+│ - PropertyCrowdfund                                        │
+│ - EquityToken                                              │
+│ - ProfitDistributor                                        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Package Structure
+## Monorepo Packages
 
-### 1. Frontend (`packages/frontend/`)
+### Frontend (`packages/frontend`)
+- React 18 + TypeScript + Vite.
+- Uses `@base-org/account` and `@base-org/account-ui` for SIWB flows.
+- Uses `/v1` backend endpoints for properties, campaigns, portfolio, and owner intents.
 
-**Technology Stack:**
-- React 18 with TypeScript
-- Vite for build tooling
-- TailwindCSS for styling
-- Wagmi for wallet connections
-- Redux Toolkit for state management
-- React Router for navigation
+### Backend (`packages/backend`)
+- Express app with `v1` routes in [`src/routes/v1.ts`](../packages/backend/src/routes/v1.ts).
+- Wallet auth (`/v1/auth/*`) with nonce + signature verification.
+- PostgreSQL-backed read model and intent tables.
+- Indexer in [`src/indexer/indexer.ts`](../packages/backend/src/indexer/indexer.ts) for event ingestion and reorg-safe replay.
 
-**Key Components:**
-- **Chain Selector**: Switch between Ethereum, Base, and Canton
-- **Token Selector**: Choose payment token (USDC, USDT, ETH, RIZE, CC)
-- **Property Listings**: Browse properties across all chains
-- **Investment Dashboard**: Track portfolio across chains
-- **Owner Console**: Manage properties and distributions
+### Contracts (`packages/contracts`)
+- `PropertyCrowdfund.sol`: USDC raise, finalize, refund, withdraw, token claim, platform fee.
+- `EquityToken.sol`: tokenized ownership supply.
+- `ProfitDistributor.sol`: accumulator-based USDC profit distribution.
 
-**State Management:**
-- `chainSlice`: Active chain and supported chains
-- `userSlice`: User authentication and wallet
-- `propertiesSlice`: Property data across chains
-- `investmentSlice`: User investments
-- `tokenSlice`: Token balances and prices
+## API Shape (Current)
 
-### 2. Backend (`packages/backend/`)
+- Preferred base path: `/v1/*`.
+- Legacy data routes under `/api/properties`, `/api/investments`, `/api/chains`, `/api/tokens` are hard-deprecated (`410 Gone`).
+- Auth alias `/api/auth/*` remains for compatibility.
 
-**Technology Stack:**
-- Node.js with Express
-- TypeScript for type safety
-- PostgreSQL for data persistence
-- ethers.js for blockchain interactions
-- Bull for job queues
-
-**Key Services:**
-- **Multi-Chain Indexer**: Listen to events on all supported chains
-- **API Server**: REST API for properties, investments, users
-- **Authentication**: JWT-based auth with Web3 signature verification
-- **Price Oracle**: Fetch token prices from external sources
-- **Notification Service**: Alert users of important events
-
-**Database Models:**
-- Property: Store property details
-- Investment: Track investments across chains
-- User: User profiles and authentication
-- ChainLog: Track indexed blocks per chain
-- Token: Token metadata and prices
-
-### 3. Smart Contracts (`packages/contracts/`)
-
-**Contracts:**
-- **PropertyToken.sol**: ERC20 token for property shares
-- **PropertyCrowdfund.sol**: Crowdfunding with multi-token support
-- **ChainRegistry.sol**: Registry of supported chains and tokens
-
-**Deployment:**
-- Same contracts deployed to each network
-- Network-specific configurations in environment variables
-- Hardhat for compilation, testing, and deployment
-
-## Multi-Chain Architecture
-
-### Chain Abstraction Layer
-
-The platform uses a chain abstraction layer to handle multiple networks seamlessly:
-
-1. **Frontend**:
-   - `chainRegistry.ts`: Chain metadata and configurations
-   - `contractService.ts`: Unified contract interaction layer
-   - Wagmi for wallet connections across chains
-
-2. **Backend**:
-   - `web3Service.ts`: Multi-provider management
-   - `indexerService.ts`: Parallel event listening for all chains
-   - Chain-specific RPC endpoints in configuration
-
-### Adding New Chains
-
-To add a new chain:
-
-1. Add chain configuration to `chains.config.ts`
-2. Add token configurations to `tokens.config.ts`
-3. Deploy contracts to the new chain
-4. Update environment variables with new RPC endpoints
-5. Add chain to indexer service
+Primary groups:
+- Public queries: `/v1/properties`, `/v1/campaigns`.
+- User portfolio queries: `/v1/me/*` (JWT required).
+- Owner intents: `/v1/admin/*/intents` (owner role required).
 
 ## Data Flow
 
-### Investment Flow
+### Investment and Portfolio Read Flow
+1. Investor transacts directly with `PropertyCrowdfund` onchain.
+2. Backend indexer ingests `Invested`, `Refunded`, `Finalized`, `TokensClaimed`.
+3. Read model tables are updated in PostgreSQL.
+4. Frontend queries `/v1` endpoints for campaign and portfolio views.
 
-```
-1. User selects property on frontend
-2. User chooses payment token and amount
-3. Frontend initiates blockchain transaction
-4. Smart contract processes investment
-5. Backend indexer detects event
-6. Backend updates database
-7. Frontend refreshes user dashboard
-```
+### Profit Distribution Flow
+1. Owner deposits USDC into `ProfitDistributor`.
+2. Investors claim USDC profits from `ProfitDistributor`.
+3. Indexer ingests `Deposited` and `Claimed` events.
+4. Frontend renders claim history via `/v1/properties/:id/profit-*` and `/v1/me/profit-claims`.
 
-### Property Creation Flow
+### Platform Fee Flow
+1. Owner submits platform fee intent via `/v1/admin/platform-fees/intents`.
+2. Backend stores intent (`platform_fee_intents`).
+3. Operator script executes `setPlatformFee(...)` on the campaign.
+4. Intent status moves `pending -> submitted -> confirmed` (or `failed`).
 
-```
-1. Owner creates property via Owner Console
-2. Backend validates and stores property data
-3. Backend deploys PropertyToken contract
-4. Backend creates crowdfunding campaign
-5. Frontend displays new property
-```
+## Operational Boundaries
 
-## Security Considerations
+- Current chain validation in `v1` controllers is Base Sepolia-first.
+- Owner actions are intent-based; onchain execution is handled by operator automation/scripts.
+- DB is a derived read model from chain events; indexer replay is required for recovery.
 
-- All smart contracts use OpenZeppelin libraries
-- ReentrancyGuard on financial functions
-- JWT tokens for API authentication
-- Web3 signature verification for login
-- Rate limiting on API endpoints
-- Input validation on all user inputs
+## Security Notes
 
-## Scalability
-
-- Database indexing on frequently queried fields
-- Caching layer for token prices and property data
-- Parallel event listening for multiple chains
-- Pagination on all list endpoints
-- Optimized smart contract gas usage
-
-## Future Enhancements
-
-- Cross-chain messaging for unified liquidity
-- Automated profit distribution
-- Secondary market for property tokens
-- Governance mechanisms for property decisions
-- Mobile application (React Native)
+- Contracts use OpenZeppelin patterns (`Ownable`, `ReentrancyGuard`, `SafeERC20`).
+- Auth uses nonce-based message signing and JWT issuance.
+- Owner privileges are gated by backend allowlist (`OWNER_ALLOWLIST`).

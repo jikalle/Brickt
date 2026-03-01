@@ -2,17 +2,29 @@
 
 ## Overview
 
-This guide covers deploying the Homeshare v2 platform to production environments across multiple blockchain networks.
+This guide covers deploying the current Homeshare v2 stack with:
+- Base Sepolia for staging/test operations.
+- Base mainnet for production rollout.
+
+The live architecture includes three backend processes:
+- API server (`dist/server.js`)
+- Indexer (`dist/indexer/run.js`)
+- Platform-fee intent worker (`scripts/process-platform-fee-intents.mjs`)
+- Property intent worker (`scripts/process-property-intents.mjs`)
 
 ## Pre-Deployment Checklist
 
 - [ ] All tests passing
 - [ ] Security audit completed
+- [ ] Threat model reviewed and accepted (`docs/THREAT_MODEL.md`)
+- [ ] Compliance readiness checklist signed (`docs/COMPLIANCE_READINESS.md`)
+- [ ] CI/CD environment protections configured (`docs/CI_CD.md`)
+- [ ] Observability dashboards and alert thresholds configured (`docs/OBSERVABILITY.md`)
 - [ ] Environment variables configured
 - [ ] Database backup strategy in place
 - [ ] Monitoring and alerting configured
 - [ ] Domain and SSL certificates ready
-- [ ] RPC endpoints configured for all chains
+- [ ] Base RPC endpoints configured
 
 ## Smart Contract Deployment
 
@@ -33,54 +45,44 @@ pnpm test
 
 ### 2. Configure Networks
 
-Update `hardhat.config.ts` with production RPC URLs and ensure `.env.local` contains:
+Update `hardhat.config.ts` and ensure contract env file contains required Base endpoints and keys:
 
 ```env
-ETHEREUM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
-BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
-CANTON_RPC_URL=https://canton-rpc.example.com
-PRIVATE_KEY=0xYOUR_PRIVATE_KEY
-ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
-BASESCAN_API_KEY=YOUR_BASESCAN_KEY
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_MAINNET_RPC_URL=https://mainnet.base.org
+DEPLOYER_PRIVATE_KEY=0xYOUR_PRIVATE_KEY
+BASE_ETHERSCAN_API_KEY=YOUR_BASESCAN_KEY
 ```
 
 ⚠️ **Security Warning**: Never commit private keys. Use hardware wallets or secure key management for production.
 
 ### 3. Deploy to Networks
 
-#### Ethereum Mainnet
+#### Base Sepolia
 
 ```bash
-pnpm deploy:ethereum
+pnpm deploy:base-sepolia
 ```
 
-#### Base Network
+#### Base Mainnet
 
 ```bash
 pnpm deploy:base
 ```
 
-#### Canton Network
-
-```bash
-pnpm deploy:canton
-```
-
 ### 4. Verify Contracts
 
 ```bash
-# Ethereum
-npx hardhat verify --network ethereum CONTRACT_ADDRESS "Constructor" "Args"
+# Base Sepolia
+npx hardhat verify --network base-sepolia CONTRACT_ADDRESS "Constructor" "Args"
 
-# Base
+# Base mainnet
 npx hardhat verify --network base CONTRACT_ADDRESS "Constructor" "Args"
 ```
 
 ### 5. Save Contract Addresses
 
-Record all deployed contract addresses and update:
-- `packages/frontend/src/config/contracts.config.ts`
-- `packages/backend/.env.production`
+Record all deployed addresses and update backend/frontend env values used by the running stack.
 
 ## Backend Deployment
 
@@ -102,7 +104,7 @@ node dist/server.js
 # Production database
 createdb homeshare_production
 
-# Run migrations (when implemented)
+# Run migrations
 pnpm migrate
 ```
 
@@ -115,18 +117,19 @@ NODE_ENV=production
 PORT=3000
 DATABASE_URL=postgresql://user:password@db-host:5432/homeshare_production
 
-# Chain RPC URLs
-ETHEREUM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
-BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
-CANTON_RPC_URL=https://canton-rpc.example.com
+# Base RPC URLs (used by auth, fee reads, and worker)
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_MAINNET_RPC_URL=https://mainnet.base.org
 
-# Contract addresses (from deployment)
-ETHEREUM_PROPERTY_TOKEN=0x...
-ETHEREUM_PROPERTY_CROWDFUND=0x...
-BASE_PROPERTY_TOKEN=0x...
-BASE_PROPERTY_CROWDFUND=0x...
-CANTON_PROPERTY_TOKEN=0x...
-CANTON_PROPERTY_CROWDFUND=0x...
+# Indexer config
+RPC_URL=https://mainnet.base.org
+START_BLOCK=0
+BATCH_SIZE=1000
+
+# Owner auth + ops
+OWNER_ALLOWLIST=0xowner1,0xowner2
+PLATFORM_OPERATOR_PRIVATE_KEY=0x...
+PLATFORM_FEE_INTENT_MAX_ATTEMPTS=3
 
 # Security
 JWT_SECRET=SECURE_RANDOM_STRING_HERE
@@ -143,6 +146,9 @@ npm install -g pm2
 
 # Start application
 pm2 start dist/server.js --name homeshare-backend
+pm2 start dist/indexer/run.js --name homeshare-indexer
+pm2 start "pnpm process:platform-fees" --name homeshare-fee-worker
+pm2 start "pnpm process:properties:watch" --name homeshare-property-worker
 
 # Save PM2 configuration
 pm2 save
@@ -254,15 +260,17 @@ server {
 - [ ] Frontend loads correctly
 - [ ] Backend health check responds: `https://api.yourdomain.com/health`
 - [ ] Can connect wallet
-- [ ] Can switch between chains
-- [ ] Smart contracts respond correctly
+- [ ] `/v1/health` responds from backend
+- [ ] Indexer is advancing block checkpoints
+- [ ] Platform-fee worker can process pending intents
+- [ ] Property worker can process pending intents
+  - `PROPERTY_OPERATOR_PRIVATE_KEY` and chain USDC env configured
 
 ### 2. Initialize Data
 
 ```bash
-# Add supported chains to ChainRegistry
-# Add supported tokens
-# Create initial test properties (optional)
+# Seed initial property/campaign records through deployment + indexer sync.
+# Validate owner intent creation and execution loop.
 ```
 
 ### 3. Monitoring
@@ -270,9 +278,11 @@ server {
 Setup monitoring for:
 - Backend uptime and response times
 - Database performance
-- Blockchain node connectivity
+- Base RPC connectivity and latency
 - Error rates and exceptions
 - Transaction success rates
+- Indexer lag (`latest - indexed` block distance)
+- Intent queue depth and failure rate
 
 ### 4. Backup Strategy
 
@@ -322,8 +332,13 @@ pnpm build
 ```bash
 # Using PM2
 pm2 stop homeshare-backend
+pm2 stop homeshare-indexer
+pm2 stop homeshare-fee-worker
 # Deploy previous version
-pm2 start dist/server.js
+pm2 start dist/server.js --name homeshare-backend
+pm2 start dist/indexer/run.js --name homeshare-indexer
+pm2 start "pnpm process:platform-fees" --name homeshare-fee-worker
+pm2 start "pnpm process:properties:watch" --name homeshare-property-worker
 ```
 
 ### Frontend Rollback
@@ -348,6 +363,7 @@ psql homeshare_production < backup_YYYYMMDD.sql
 - [ ] Database credentials rotated
 - [ ] Smart contracts audited
 - [ ] Dependencies updated and scanned
+- [ ] Operator private keys managed via secrets manager
 
 ## Support & Troubleshooting
 

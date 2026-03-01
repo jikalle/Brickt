@@ -7,7 +7,7 @@ export default function Footer() {
           <div>
             <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Homeshare</h3>
             <p className="text-gray-600 dark:text-gray-300">
-              Multi-chain real estate crowdfunding platform
+              Base-native real estate crowdfunding platform
             </p>
           </div>
 
@@ -25,6 +25,11 @@ export default function Footer() {
                   Dashboard
                 </a>
               </li>
+              <li>
+                <a href="/disclosures" className="text-gray-600 dark:text-gray-300 hover:text-primary-600">
+                  Risk Disclosures
+                </a>
+              </li>
             </ul>
           </div>
 
@@ -32,9 +37,8 @@ export default function Footer() {
           <div>
             <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Supported Networks</h3>
             <ul className="space-y-2">
-              <li className="text-gray-600 dark:text-gray-300">Ethereum</li>
+              <li className="text-gray-600 dark:text-gray-300">Base Sepolia</li>
               <li className="text-gray-600 dark:text-gray-300">Base</li>
-              <li className="text-gray-600 dark:text-gray-300">Canton</li>
             </ul>
           </div>
         </div>

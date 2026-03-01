@@ -1,15 +1,13 @@
 # Homeshare v2 🏠
 
-> Multi-Chain Real Estate Crowdfunding Platform
+> Base-Native Real Estate Crowdfunding Platform
 
-Homeshare v2 is a decentralized real estate crowdfunding platform that enables investors to participate in property investments across multiple blockchain networks with support for various stablecoins and native tokens.
+Homeshare v2 is a decentralized real estate crowdfunding platform focused on Base. Investors fund properties with USDC, receive tokenized equity, and claim onchain profit distributions.
 
 ## 🌐 Supported Networks
 
-- **Ethereum Mainnet**: USDC, USDT, ETH
-- **Base Network**: USDC, USDT, ETH, RIZE ($RIZE token)
-- **Canton Network**: CC token (native)
-- **EVM-Compatible Chains**: Generic support for future expansion
+- **Base Sepolia**: USDC, ETH (active development/testing)
+- **Base Mainnet**: USDC, USDT, ETH (launch target)
 
 ## 🏗️ Project Structure
 
@@ -58,36 +56,43 @@ pnpm dev
 - React 18 with TypeScript
 - Vite for fast development
 - TailwindCSS for styling
-- Wagmi for multi-chain wallet integration
+- Wagmi for Base wallet integration
 - Redux Toolkit for state management
 
 ### Backend
 - Express.js with TypeScript
 - PostgreSQL for data persistence
-- Multi-chain indexing service
+- Base event indexing service
 - JWT-based authentication
 
 ### Contracts
 - Solidity smart contracts
 - Hardhat development environment
-- Multi-chain deployment scripts
+- Base-focused deployment scripts
 - OpenZeppelin contracts
 
 ## 📚 Documentation
 
 - [Architecture](./docs/ARCHITECTURE.md)
+- [Execution Board](./docs/EXECUTION_BOARD.md)
 - [Setup Guide](./docs/SETUP.md)
 - [Deployment](./docs/DEPLOYMENT.md)
+- [CI/CD Guide](./docs/CI_CD.md)
+- [Observability Guide](./docs/OBSERVABILITY.md)
+- [Intent Operations](./docs/OPERATIONS_INTENTS.md)
+- [Threat Model](./docs/THREAT_MODEL.md)
+- [Compliance Readiness](./docs/COMPLIANCE_READINESS.md)
+- [Investor Disclosures](./docs/INVESTOR_DISCLOSURES.md)
 - [API Documentation](./docs/API.md)
 - [Smart Contracts](./docs/SMART_CONTRACTS.md)
 - [Contributing](./docs/CONTRIBUTING.md)
 
 ## 🔑 Key Features
 
-✅ **Multi-Chain Support** - Invest across Ethereum, Base, and Canton networks  
-✅ **Multiple Tokens** - Support for USDC, USDT, ETH, RIZE, and CC tokens  
+✅ **Base-Only Focus** - Built for Base Sepolia and Base Mainnet  
+✅ **USDC Investment Rails** - USDC-first fundraising and payouts  
 ✅ **Real Estate Tokenization** - Fractional ownership through ERC20 tokens  
-✅ **Investor Dashboard** - Track investments across all chains  
+✅ **Investor Dashboard** - Track investments and claims from indexed onchain data  
 ✅ **Owner Console** - Manage properties and distribute profits  
 ✅ **Type Safety** - Full TypeScript across all packages  
 

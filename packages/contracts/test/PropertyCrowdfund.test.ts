@@ -203,6 +203,51 @@ describe("PropertyCrowdfund", function () {
     );
   });
 
+  it("applies configured platform fee during withdraw", async function () {
+    const { admin, investor1, investor2, recipient, usdc, crowdfund } = await deployFixture();
+    const [, , , , feeRecipient] = await ethers.getSigners();
+
+    await usdc.connect(investor1).approve(crowdfund.target, 3n * ONE_USDC);
+    await usdc.connect(investor2).approve(crowdfund.target, 2n * ONE_USDC);
+    await crowdfund.connect(investor1).invest(3n * ONE_USDC);
+    await crowdfund.connect(investor2).invest(2n * ONE_USDC);
+    await crowdfund.connect(admin).setPlatformFee(500, feeRecipient.address); // 5%
+    await crowdfund.finalizeCampaign();
+
+    const recipientBefore = await usdc.balanceOf(recipient.address);
+    const feeBefore = await usdc.balanceOf(feeRecipient.address);
+
+    await crowdfund.connect(admin).withdrawFunds(recipient.address);
+
+    const recipientAfter = await usdc.balanceOf(recipient.address);
+    const feeAfter = await usdc.balanceOf(feeRecipient.address);
+
+    const totalRaised = 5n * ONE_USDC;
+    const expectedFee = (totalRaised * 500n) / 10_000n;
+    const expectedRecipient = totalRaised - expectedFee;
+
+    expect(recipientAfter - recipientBefore).to.equal(expectedRecipient);
+    expect(feeAfter - feeBefore).to.equal(expectedFee);
+  });
+
+  it("reverts platform fee config when fee exceeds max", async function () {
+    const { admin, crowdfund } = await deployFixture();
+
+    await expectRevert(
+      crowdfund.connect(admin).setPlatformFee(2001, admin.address),
+      "Fee too high"
+    );
+  });
+
+  it("reverts platform fee config with zero recipient when fee > 0", async function () {
+    const { admin, crowdfund } = await deployFixture();
+
+    await expectRevert(
+      crowdfund.connect(admin).setPlatformFee(100, ethers.ZeroAddress),
+      "Invalid fee recipient"
+    );
+  });
+
   it("claims equity tokens pro-rata with rounding", async function () {
     const [investor1, investor2] = (await ethers.getSigners()).slice(1, 3);
     const totalEquityTokensForSale = ethers.parseUnits("1000", 18);

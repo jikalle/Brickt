@@ -12,6 +12,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  */
 contract PropertyCrowdfund is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    uint16 public constant MAX_PLATFORM_FEE_BPS = 2_000;
 
     enum CampaignState {
         ACTIVE,
@@ -26,6 +27,8 @@ contract PropertyCrowdfund is Ownable, ReentrancyGuard {
     uint256 public immutable startTime;
     uint256 public immutable endTime;
     uint256 public immutable totalEquityTokensForSale;
+    uint16 public platformFeeBps;
+    address public platformFeeRecipient;
     string public propertyId;
 
     uint256 private _raisedAmountUSDC;
@@ -40,6 +43,8 @@ contract PropertyCrowdfund is Ownable, ReentrancyGuard {
     event Refunded(address indexed investor, uint256 amountUSDC);
     event TokensClaimed(address indexed investor, uint256 amountEquityTokens);
     event EquityTokenSet(address indexed equityToken);
+    event PlatformFeeUpdated(uint16 feeBps, address indexed recipient);
+    event PlatformFeePaid(address indexed recipient, uint256 amountUSDC);
 
     /**
      * @param admin Campaign owner with withdrawal rights.
@@ -71,6 +76,7 @@ contract PropertyCrowdfund is Ownable, ReentrancyGuard {
         endTime = endTimestamp;
         totalEquityTokensForSale = totalEquityTokens;
         propertyId = propertyIdValue;
+        platformFeeRecipient = admin;
         _state = CampaignState.ACTIVE;
     }
 
@@ -156,6 +162,25 @@ contract PropertyCrowdfund is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Configure platform fee paid during successful withdraw.
+     * @param feeBps Fee in basis points, where 10000 = 100%.
+     * @param recipient Address that receives platform fees.
+     */
+    function setPlatformFee(
+        uint16 feeBps,
+        address recipient
+    ) external onlyOwner {
+        require(feeBps <= MAX_PLATFORM_FEE_BPS, "Fee too high");
+        if (feeBps > 0) {
+            require(recipient != address(0), "Invalid fee recipient");
+        }
+
+        platformFeeBps = feeBps;
+        platformFeeRecipient = recipient;
+        emit PlatformFeeUpdated(feeBps, recipient);
+    }
+
+    /**
      * @notice Withdraw raised USDC after success.
      * @param to Recipient of funds.
      */
@@ -166,9 +191,23 @@ contract PropertyCrowdfund is Ownable, ReentrancyGuard {
         _state = CampaignState.WITHDRAWN;
 
         uint256 balance = usdcToken.balanceOf(address(this));
-        usdcToken.safeTransfer(to, balance);
+        uint256 feeAmount = 0;
+        if (platformFeeBps > 0) {
+            require(
+                platformFeeRecipient != address(0),
+                "Platform fee recipient not set"
+            );
+            feeAmount = (balance * platformFeeBps) / 10_000;
+            if (feeAmount > 0) {
+                usdcToken.safeTransfer(platformFeeRecipient, feeAmount);
+                emit PlatformFeePaid(platformFeeRecipient, feeAmount);
+            }
+        }
 
-        emit Withdrawn(to, balance);
+        uint256 ownerAmount = balance - feeAmount;
+        usdcToken.safeTransfer(to, ownerAmount);
+
+        emit Withdrawn(to, ownerAmount);
     }
 
     /**

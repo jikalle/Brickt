@@ -48,9 +48,9 @@ cp .env.example .env.local
 Edit `.env.local`:
 ```env
 VITE_APP_NAME=Homeshare
-VITE_API_BASE_URL=http://localhost:3000/api
-VITE_DEFAULT_CHAIN=ethereum
-VITE_SUPPORTED_CHAINS=ethereum,base,canton
+VITE_API_BASE_URL=http://localhost:3000
+VITE_DEFAULT_CHAIN=base-sepolia
+VITE_SUPPORTED_CHAINS=base-sepolia,base
 ```
 
 #### Backend
@@ -62,9 +62,12 @@ cp .env.example .env
 
 Edit `.env` and configure (the server logs warnings for missing or placeholder values on boot):
 - Database connection string
-- RPC URLs for each chain
+- Base RPC URLs (`BASE_SEPOLIA_RPC_URL`, optional `BASE_MAINNET_RPC_URL`)
 - JWT secret
-- Contract addresses (after deployment)
+- `OWNER_ALLOWLIST` for owner auth elevation (comma-separated addresses)
+- `PLATFORM_OPERATOR_PRIVATE_KEY` for platform-fee intent execution worker
+- `PLATFORM_FEE_INTENT_MAX_ATTEMPTS` to cap automatic retries (default `3`)
+- Rate limiting controls (`RATE_LIMIT_*`, `AUTH_RATE_LIMIT_*`)
 
 #### Contracts
 
@@ -161,7 +164,7 @@ npx hardhat run deploy/deployEthereum.ts --network localhost
 
 ```bash
 cd packages/frontend
-pnpm test
+pnpm build
 ```
 
 ### Backend Tests
@@ -211,14 +214,14 @@ If port 3000 or 5173 is already in use:
 # Frontend (change in vite.config.ts or use env var)
 VITE_PORT=5174 pnpm dev
 
-# Backend (change PORT in .env.local)
+# Backend (change PORT in .env)
 PORT=3001 pnpm dev
 ```
 
 ### Database Connection Issues
 
 1. Ensure PostgreSQL is running
-2. Verify DATABASE_URL in `.env.local`
+2. Verify `DATABASE_URL` in `packages/backend/.env`
 3. Check database exists: `psql -l`
 
 ### Contract Compilation Errors
