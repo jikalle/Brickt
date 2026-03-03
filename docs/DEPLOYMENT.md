@@ -11,6 +11,7 @@ The live architecture includes three backend processes:
 - Indexer (`dist/indexer/run.js`)
 - Platform-fee intent worker (`scripts/process-platform-fee-intents.mjs`)
 - Property intent worker (`scripts/process-property-intents.mjs`)
+- Profit intent worker (`scripts/process-profit-intents.mjs`)
 
 ## Pre-Deployment Checklist
 
@@ -149,6 +150,10 @@ pm2 start dist/server.js --name homeshare-backend
 pm2 start dist/indexer/run.js --name homeshare-indexer
 pm2 start "pnpm process:platform-fees" --name homeshare-fee-worker
 pm2 start "pnpm process:properties:watch" --name homeshare-property-worker
+pm2 start "pnpm process:profits:watch" --name homeshare-profit-worker
+
+# Or run property + profit workers under one supervisor process:
+pm2 start "pnpm process:intents:watch" --name homeshare-intent-workers
 
 # Save PM2 configuration
 pm2 save
@@ -265,6 +270,7 @@ server {
 - [ ] Platform-fee worker can process pending intents
 - [ ] Property worker can process pending intents
   - `PROPERTY_OPERATOR_PRIVATE_KEY` and chain USDC env configured
+- [ ] Profit worker can process pending intents
 
 ### 2. Initialize Data
 
@@ -283,6 +289,16 @@ Setup monitoring for:
 - Transaction success rates
 - Indexer lag (`latest - indexed` block distance)
 - Intent queue depth and failure rate
+
+Operational schedulers (recommended):
+- `pnpm --filter @homeshare/backend intents:alert` every 2 minutes
+- `pnpm --filter @homeshare/backend reconcile:intents` every 5 minutes
+
+Use helper:
+
+```bash
+./scripts/install-ops-cron.sh --apply
+```
 
 ### 4. Backup Strategy
 
@@ -339,6 +355,10 @@ pm2 start dist/server.js --name homeshare-backend
 pm2 start dist/indexer/run.js --name homeshare-indexer
 pm2 start "pnpm process:platform-fees" --name homeshare-fee-worker
 pm2 start "pnpm process:properties:watch" --name homeshare-property-worker
+pm2 start "pnpm process:profits:watch" --name homeshare-profit-worker
+
+# Or run property + profit workers under one supervisor process:
+pm2 start "pnpm process:intents:watch" --name homeshare-intent-workers
 ```
 
 ### Frontend Rollback

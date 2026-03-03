@@ -22,11 +22,14 @@ import {
   createPlatformFeeIntent,
   createProfitDistributionIntent,
   createPropertyIntent,
+  getProfitFlowStatus,
+  getProfitPreflight,
   listPlatformFeeIntents,
   listProfitDistributionIntents,
   listPropertyIntents,
 } from '../controllers/v1/adminController.js';
 import { getAdminMetrics } from '../controllers/v1/observabilityController.js';
+import { quoteEthUsdc } from '../controllers/v1/quotesController.js';
 
 const router: ExpressRouter = Router();
 
@@ -44,6 +47,7 @@ router.get('/campaigns', listCampaigns);
 router.get('/campaigns/:campaignAddress', getCampaign);
 router.get('/campaigns/:campaignAddress/investments', listCampaignInvestments);
 router.get('/campaigns/:campaignAddress/refunds', listCampaignRefunds);
+router.get('/quotes/eth-usdc', quoteEthUsdc);
 
 router.get('/me/investments', auth, listMyInvestments);
 router.get('/me/equity-claims', auth, listMyEquityClaims);
@@ -54,6 +58,8 @@ router.post('/admin/profits/intents', auth, requireRole('owner'), createProfitDi
 router.post('/admin/platform-fees/intents', auth, requireRole('owner'), createPlatformFeeIntent);
 router.get('/admin/properties/intents', auth, requireRole('owner'), listPropertyIntents);
 router.get('/admin/profits/intents', auth, requireRole('owner'), listProfitDistributionIntents);
+router.get('/admin/profits/preflight', auth, requireRole('owner'), getProfitPreflight);
+router.get('/admin/profits/flow-status', auth, requireRole('owner'), getProfitFlowStatus);
 router.get('/admin/platform-fees/intents', auth, requireRole('owner'), listPlatformFeeIntents);
 router.get('/admin/metrics', auth, requireRole('owner'), getAdminMetrics);
 

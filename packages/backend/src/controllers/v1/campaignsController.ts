@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../db/index.js';
 import { getCrowdfundFeeInfo } from './crowdfundFee.js';
+import { sendError } from '../../lib/apiError.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
   ValidationError,
@@ -13,10 +14,10 @@ import {
 
 const handleError = (res: Response, error: unknown) => {
   if (error instanceof ValidationError) {
-    return res.status(error.status).json({ error: error.message });
+    return sendError(res, error.status, error.message, 'validation_error');
   }
   console.error(error);
-  return res.status(500).json({ error: 'Internal server error' });
+  return sendError(res, 500, 'Internal server error', 'internal_error');
 };
 
 type CampaignRow = {
@@ -158,7 +159,7 @@ export const getCampaign = async (req: Request, res: Response) => {
 
     const campaign = rows[0];
     if (!campaign) {
-      return res.status(404).json({ error: 'Campaign not found' });
+      return sendError(res, 404, 'Campaign not found', 'not_found');
     }
 
     const feeInfo = await getCrowdfundFeeInfo(campaign.campaignAddress);

@@ -6,6 +6,7 @@ import { User } from '../models/index.js';
 import { env } from '../config/env.js';
 import { auth, AuthenticatedRequest } from '../middleware/auth.js';
 import { loginSchema } from '../validators/auth.js';
+import { sendError } from '../lib/apiError.js';
 
 const router: Router = Router();
 const NONCE_TTL_MS = 10 * 60 * 1000;
@@ -219,13 +220,13 @@ export const loginHandler = async (req: Request, res: Response) => {
   try {
     if (!env.jwtSecret || env.jwtSecret.length < 16) {
       logAuthFailure(req, 'jwt-secret-invalid', {});
-      return res.status(500).json({ error: 'JWT secret is not configured securely' });
+      return sendError(res, 500, 'JWT secret is not configured securely', 'internal_error');
     }
 
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       logAuthFailure(req, 'invalid-payload', {});
-      return res.status(400).json({ error: 'Invalid login payload' });
+      return sendError(res, 400, 'Invalid login payload', 'bad_request');
     }
 
     const { address, signature, message, role } = parsed.data;
@@ -239,7 +240,7 @@ export const loginHandler = async (req: Request, res: Response) => {
         chainId,
         messageLength: message.length,
       });
-      return res.status(401).json({ error: 'Invalid or expired nonce' });
+      return sendError(res, 401, 'Invalid or expired nonce', 'unauthorized');
     }
 
     const messageError = validateSignedMessage(address, message);
@@ -251,7 +252,7 @@ export const loginHandler = async (req: Request, res: Response) => {
         chainId,
         messageLength: message.length,
       });
-      return res.status(401).json({ error: messageError });
+      return sendError(res, 401, messageError, 'unauthorized');
     }
 
     const valid = await verifySignature(address, message, signature);
@@ -263,7 +264,7 @@ export const loginHandler = async (req: Request, res: Response) => {
         chainId,
         messageLength: message.length,
       });
-      return res.status(401).json({ error: 'Invalid signature' });
+      return sendError(res, 401, 'Invalid signature', 'unauthorized');
     }
 
     const normalizedAddress = address.toLowerCase();
@@ -286,7 +287,7 @@ export const loginHandler = async (req: Request, res: Response) => {
         chainId,
         messageLength: message.length,
       });
-      return res.status(403).json({ error: 'Owner access requires allowlist approval' });
+      return sendError(res, 403, 'Owner access requires allowlist approval', 'forbidden');
     }
 
     const currentRole = String(user.role);
@@ -333,7 +334,7 @@ export const loginHandler = async (req: Request, res: Response) => {
       userAgent: getUserAgent(req),
       at: new Date().toISOString(),
     });
-    res.status(500).json({ error: 'Authentication failed' });
+    return sendError(res, 500, 'Authentication failed', 'authentication_failed');
   }
 };
 

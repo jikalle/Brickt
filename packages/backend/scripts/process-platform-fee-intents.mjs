@@ -1,4 +1,4 @@
-import { Interface, JsonRpcProvider, Wallet, ZeroAddress } from 'ethers';
+import { Interface, JsonRpcProvider, NonceManager, Wallet, ZeroAddress } from 'ethers';
 import { QueryTypes } from 'sequelize';
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
@@ -10,7 +10,10 @@ const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC_
 const operatorKey = process.env.PLATFORM_OPERATOR_PRIVATE_KEY || '';
 const batchSize = Number(process.env.PLATFORM_FEE_INTENT_BATCH_SIZE || 10);
 const maxAttempts = Number(process.env.PLATFORM_FEE_INTENT_MAX_ATTEMPTS || 3);
+const pollIntervalMs = Number(process.env.PLATFORM_FEE_INTENT_POLL_INTERVAL_MS || 15000);
+const continuousMode = process.env.PLATFORM_FEE_INTENT_CONTINUOUS === 'true';
 const ZERO_PRIVATE_KEY = '0x0000000000000000000000000000000000000000000000000000000000000000';
+const ADVISORY_LOCK_KEY = 424204007;
 
 if (!rpcUrl) {
   throw new Error('Missing BASE_SEPOLIA_RPC_URL (or BASE_MAINNET_RPC_URL)');
@@ -25,7 +28,8 @@ if (operatorKey === ZERO_PRIVATE_KEY) {
 }
 
 const provider = new JsonRpcProvider(rpcUrl);
-const signer = new Wallet(operatorKey, provider);
+const baseSigner = new Wallet(operatorKey, provider);
+const signer = new NonceManager(baseSigner);
 const crowdfundInterface = new Interface([
   'function setPlatformFee(uint16 feeBps, address recipient)',
 ]);
@@ -33,6 +37,25 @@ const crowdfundInterface = new Interface([
 if (!Number.isInteger(maxAttempts) || maxAttempts <= 0) {
   throw new Error('PLATFORM_FEE_INTENT_MAX_ATTEMPTS must be a positive integer');
 }
+
+if (!Number.isInteger(pollIntervalMs) || pollIntervalMs <= 0) {
+  throw new Error('PLATFORM_FEE_INTENT_POLL_INTERVAL_MS must be > 0');
+}
+
+const acquireWorkerLock = async () => {
+  const rows = await sequelize.query('SELECT pg_try_advisory_lock(:key) AS "locked"', {
+    type: QueryTypes.SELECT,
+    replacements: { key: ADVISORY_LOCK_KEY },
+  });
+  return Array.isArray(rows) && rows[0] && rows[0].locked === true;
+};
+
+const releaseWorkerLock = async () => {
+  await sequelize.query('SELECT pg_advisory_unlock(:key)', {
+    type: QueryTypes.SELECT,
+    replacements: { key: ADVISORY_LOCK_KEY },
+  });
+};
 
 const loadPendingIntents = async () =>
   sequelize.query(
@@ -123,10 +146,24 @@ const processIntent = async (intent) => {
     recipient,
   ]);
 
-  const tx = await signer.sendTransaction({
-    to: intent.campaignAddress,
-    data,
-  });
+  let tx;
+  try {
+    tx = await signer.sendTransaction({
+      to: intent.campaignAddress,
+      data,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    if (message.includes('nonce has already been used') || message.includes('nonce too low')) {
+      signer.reset();
+      tx = await signer.sendTransaction({
+        to: intent.campaignAddress,
+        data,
+      });
+    } else {
+      throw error;
+    }
+  }
 
   await markSubmitted(intent.id, tx.hash);
   const receipt = await tx.wait();
@@ -151,7 +188,7 @@ const run = async () => {
   }
 
   console.log(
-    `processing ${intents.length} platform fee intent(s) with maxAttempts=${maxAttempts}`
+    `processing ${intents.length} platform fee intent(s) with maxAttempts=${maxAttempts} rpc=${rpcUrl}`
   );
   for (const intent of intents) {
     try {
@@ -181,8 +218,35 @@ const run = async () => {
   }
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 try {
-  await run();
+  const locked = await acquireWorkerLock();
+  if (!locked) {
+    console.log('platform fee worker lock not acquired (another worker is running). exiting.');
+    process.exit(0);
+  }
+
+  if (!continuousMode) {
+    await run();
+  } else {
+    console.log(`platform fee intent worker started (continuous mode, interval=${pollIntervalMs}ms)`);
+    while (true) {
+      try {
+        await run();
+      } catch (error) {
+        console.error(
+          `[platform-fee-worker] loop error: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      await sleep(pollIntervalMs);
+    }
+  }
 } finally {
+  try {
+    await releaseWorkerLock();
+  } catch (_error) {
+    // Ignore unlock errors during shutdown.
+  }
   await sequelize.close();
 }

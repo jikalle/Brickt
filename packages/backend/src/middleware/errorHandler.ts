@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { sendError } from '../lib/apiError.js';
 
 export const errorHandler = (
   err: Error,
@@ -7,8 +8,5 @@ export const errorHandler = (
   next: NextFunction
 ) => {
   console.error(err.stack);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
-  });
+  return sendError(res, 500, 'Internal server error', 'internal_error');
 };

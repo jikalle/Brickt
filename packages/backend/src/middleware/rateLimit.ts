@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { sendError } from '../lib/apiError.js';
 
 type Bucket = {
   count: number;
@@ -49,7 +50,7 @@ export function createRateLimiter(options: {
       res.setHeader('Retry-After', String(Math.max(retryAfter, 1)));
       res.setHeader('X-RateLimit-Limit', String(maxRequests));
       res.setHeader('X-RateLimit-Remaining', '0');
-      return res.status(429).json({ error: 'Rate limit exceeded. Please retry shortly.' });
+      return sendError(res, 429, 'Rate limit exceeded. Please retry shortly.', 'rate_limited');
     }
 
     existing.count += 1;

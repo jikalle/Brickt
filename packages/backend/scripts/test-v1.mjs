@@ -9,7 +9,9 @@ const disallowedOwnerWallet = ethers.Wallet.createRandom();
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-1234567890';
 process.env.OWNER_ALLOWLIST = ownerWallet.address.toLowerCase();
-process.env.BASE_SEPOLIA_RPC_URL = '';
+process.env.PRIVATE_KEY = OWNER_PRIVATE_KEY;
+process.env.PROFIT_OPERATOR_PRIVATE_KEY = OWNER_PRIVATE_KEY;
+process.env.BASE_SEPOLIA_RPC_URL = 'http://localhost:8545';
 process.env.BASE_MAINNET_RPC_URL = '';
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/homeshare';
@@ -20,6 +22,8 @@ const {
   createPropertyIntent,
   createProfitDistributionIntent,
   createPlatformFeeIntent,
+  getProfitFlowStatus,
+  getProfitPreflight,
 } = await import('../dist/controllers/v1/adminController.js');
 const { listProperties } = await import('../dist/controllers/v1/propertiesController.js');
 const { listCampaigns } = await import('../dist/controllers/v1/campaignsController.js');
@@ -34,6 +38,9 @@ const { sequelize } = await import('../dist/db/index.js');
 const userStore = new Map();
 const originalFindOrCreate = User.findOrCreate.bind(User);
 const originalQuery = sequelize.query.bind(sequelize);
+const originalProviderCall = ethers.JsonRpcProvider.prototype.call.bind(
+  ethers.JsonRpcProvider.prototype
+);
 
 const makeRes = () => {
   const res = {
@@ -74,6 +81,19 @@ const stubUserFindOrCreate = () => {
 
 const stubSequelizeQuery = () => {
   sequelize.query = async (sql, options) => {
+    if (
+      sql.includes('FROM properties') &&
+      sql.includes('profit_distributor_address') &&
+      sql.includes('WHERE chain_id = :chainId') &&
+      sql.includes('AND property_id = :propertyId')
+    ) {
+      return [
+        {
+          propertyId: 'prop-001',
+          profitDistributorAddress: ownerWallet.address.toLowerCase(),
+        },
+      ];
+    }
     if (sql.includes('FROM properties') && sql.includes('WHERE chain_id')) {
       return [
         [
@@ -161,6 +181,39 @@ const stubSequelizeQuery = () => {
         ],
       ];
     }
+    if (sql.includes('FROM indexer_state') && sql.includes('WHERE chain_id = :chainId')) {
+      return [{ last_block: '38390000' }];
+    }
+    if (sql.includes('FROM (') && sql.includes('SELECT id, submitted_at FROM property_intents')) {
+      return [{ count: '0' }];
+    }
+    if (sql.includes('FROM profit_distribution_intents') && sql.includes('WHERE property_id = :propertyId')) {
+      return [
+        {
+          id: 'intent-1',
+          status: 'confirmed',
+          submittedAt: new Date(Date.now() - 30_000).toISOString(),
+          confirmedAt: new Date().toISOString(),
+          txHash: '0xintent',
+        },
+      ];
+    }
+    if (
+      sql.includes('FROM profit_deposits pd') &&
+      sql.includes('JOIN properties p ON p.id = pd.property_id') &&
+      sql.includes('AS "txHash"')
+    ) {
+      return [
+        {
+          txHash: '0xdeposit',
+          createdAt: new Date().toISOString(),
+          amountBaseUnits: '1000000',
+        },
+      ];
+    }
+    if (sql.includes('AS "unclaimedBaseUnits"')) {
+      return [{ unclaimedBaseUnits: '750000' }];
+    }
     if (sql.includes('INSERT INTO property_intents')) {
       const createdAt = new Date().toISOString();
       return [
@@ -171,6 +224,8 @@ const stubSequelizeQuery = () => {
             location: String(options?.replacements?.location ?? 'Location'),
             description: String(options?.replacements?.description ?? 'Description'),
             targetUsdcBaseUnits: String(options?.replacements?.targetUsdcBaseUnits ?? '0'),
+            startTime: options?.replacements?.startTime ?? null,
+            endTime: options?.replacements?.endTime ?? null,
             crowdfundAddress: options?.replacements?.crowdfundContractAddress ?? null,
             status: 'pending',
             txHash: null,
@@ -227,9 +282,39 @@ const stubSequelizeQuery = () => {
   };
 };
 
+const stubProviderCall = () => {
+  const iface = new ethers.Interface([
+    'function owner() view returns (address)',
+    'function usdcToken() view returns (address)',
+    'function balanceOf(address account) view returns (uint256)',
+    'function allowance(address owner, address spender) view returns (uint256)',
+  ]);
+
+  ethers.JsonRpcProvider.prototype.call = async function call(transaction) {
+    const data = String(transaction?.data || '').toLowerCase();
+    const selector = data.slice(0, 10);
+
+    if (selector === iface.getFunction('owner').selector.toLowerCase()) {
+      return iface.encodeFunctionResult('owner', [ownerWallet.address.toLowerCase()]);
+    }
+    if (selector === iface.getFunction('usdcToken').selector.toLowerCase()) {
+      return iface.encodeFunctionResult('usdcToken', ['0x036cbd53842c5426634e7929541ec2318f3dcf7e']);
+    }
+    if (selector === iface.getFunction('balanceOf').selector.toLowerCase()) {
+      return iface.encodeFunctionResult('balanceOf', [1_500_000n]);
+    }
+    if (selector === iface.getFunction('allowance').selector.toLowerCase()) {
+      return iface.encodeFunctionResult('allowance', [1_200_000n]);
+    }
+
+    throw new Error(`Unexpected provider.call selector in test stub: ${selector}`);
+  };
+};
+
 const restoreStubs = () => {
   User.findOrCreate = originalFindOrCreate;
   sequelize.query = originalQuery;
+  ethers.JsonRpcProvider.prototype.call = originalProviderCall;
 };
 
 const buildMessage = (address, nonce) =>
@@ -271,6 +356,7 @@ const runRoleMiddleware = async (role, req) =>
 const run = async () => {
   stubUserFindOrCreate();
   stubSequelizeQuery();
+  stubProviderCall();
 
   try {
     {
@@ -423,6 +509,83 @@ const run = async () => {
 
     {
       const res = makeRes();
+      await createPropertyIntent(
+        {
+          user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
+          body: {
+            chainId: 84532,
+            propertyId: 'prop-002',
+            name: 'Scheduled Property',
+            location: 'Lagos',
+            description: 'Start/end validation',
+            targetUsdcBaseUnits: '1000000',
+            startTime: new Date(Date.now() + 60_000).toISOString(),
+          },
+        },
+        res
+      );
+      assert.equal(
+        res.statusCode,
+        400,
+        'property intent should reject when only startTime is provided'
+      );
+      assert.equal(res.body.error, 'Provide both startTime and endTime together');
+    }
+
+    {
+      const now = Date.now();
+      const startTime = new Date(now + 120_000).toISOString();
+      const endTime = new Date(now + 60_000).toISOString();
+      const res = makeRes();
+      await createPropertyIntent(
+        {
+          user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
+          body: {
+            chainId: 84532,
+            propertyId: 'prop-003',
+            name: 'Invalid Schedule Property',
+            location: 'Abuja',
+            description: 'End before start',
+            targetUsdcBaseUnits: '1000000',
+            startTime,
+            endTime,
+          },
+        },
+        res
+      );
+      assert.equal(res.statusCode, 400, 'property intent should reject invalid schedule ordering');
+      assert.equal(res.body.error, 'endTime must be after startTime');
+    }
+
+    {
+      const now = Date.now();
+      const startTime = new Date(now + 60_000).toISOString();
+      const endTime = new Date(now + 120_000).toISOString();
+      const res = makeRes();
+      await createPropertyIntent(
+        {
+          user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
+          body: {
+            chainId: 84532,
+            propertyId: 'prop-004',
+            name: 'Valid Scheduled Property',
+            location: 'Port Harcourt',
+            description: 'Valid schedule',
+            targetUsdcBaseUnits: '1000000',
+            startTime,
+            endTime,
+          },
+        },
+        res
+      );
+      assert.equal(res.statusCode, 201, 'property intent should allow valid start/end schedule');
+      assert.equal(res.body.intent.propertyId, 'prop-004');
+      assert.equal(res.body.intent.startTime, startTime);
+      assert.equal(res.body.intent.endTime, endTime);
+    }
+
+    {
+      const res = makeRes();
       await createProfitDistributionIntent(
         {
           user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
@@ -495,6 +658,48 @@ const run = async () => {
       await listMyProfitClaims(req, profitRes);
       assert.equal(profitRes.statusCode, 200, 'list my profit claims should succeed');
       assert.ok(Array.isArray(profitRes.body.profitClaims));
+    }
+
+    {
+      const res = makeRes();
+      await getProfitPreflight(
+        {
+          user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
+          query: {
+            propertyId: 'prop-001',
+            usdcAmountBaseUnits: '1000000',
+          },
+        },
+        res
+      );
+      assert.equal(res.statusCode, 200, 'profit preflight should succeed');
+      assert.equal(res.body.propertyId, 'prop-001');
+      assert.equal(res.body.checks.operatorConfigured, true);
+      assert.equal(res.body.checks.ownerMatchesOperator, true);
+      assert.equal(res.body.checks.hasSufficientBalance, true);
+      assert.equal(res.body.checks.hasSufficientAllowance, true);
+      assert.equal(res.body.checks.indexerHealthy, true);
+      assert.equal(res.body.checks.workersHealthy, true);
+    }
+
+    {
+      const res = makeRes();
+      await getProfitFlowStatus(
+        {
+          user: { id: 'o1', address: ownerWallet.address, role: 'owner' },
+          query: {
+            propertyId: 'prop-001',
+          },
+        },
+        res
+      );
+      assert.equal(res.statusCode, 200, 'profit flow status should succeed');
+      assert.equal(res.body.propertyId, 'prop-001');
+      assert.equal(res.body.flags.intentSubmitted, true);
+      assert.equal(res.body.flags.intentConfirmed, true);
+      assert.equal(res.body.flags.depositIndexed, true);
+      assert.equal(res.body.flags.claimablePoolPositive, true);
+      assert.equal(res.body.unclaimedPoolBaseUnits, '750000');
     }
 
     console.log('v1 auth/admin/query tests passed');

@@ -57,7 +57,9 @@ if (!Number.isInteger(pollIntervalMs) || pollIntervalMs <= 0) {
 const provider = new JsonRpcProvider(rpcUrl);
 const baseSigner = new Wallet(operatorKey, provider);
 const signer = new NonceManager(baseSigner);
+const operatorAddress = baseSigner.address.toLowerCase();
 const ADVISORY_LOCK_KEY = 424204001;
+const OFFICIAL_BASE_SEPOLIA_USDC = '0x036cbd53842c5426634e7929541ec2318f3dcf7e';
 
 const loadArtifact = (artifactPath) => {
   const fullPath = resolve(__dirname, '../../contracts/artifacts/contracts', artifactPath);
@@ -70,12 +72,8 @@ const profitDistributorArtifact = loadArtifact('ProfitDistributor.sol/ProfitDist
 
 const getUsdcAddressForChain = (chainId) => {
   if (chainId === 84532) {
-    return (
-      process.env.BASE_SEPOLIA_USDC_ADDRESS ||
-      process.env.BASE_USDC_ADDRESS ||
-      process.env.ETHEREUM_USDC_ADDRESS ||
-      ''
-    ).toLowerCase();
+    // Enforce official Base Sepolia USDC for all newly deployed campaigns.
+    return OFFICIAL_BASE_SEPOLIA_USDC;
   }
   if (chainId === 8453) {
     return (process.env.BASE_USDC_ADDRESS || '').toLowerCase();
@@ -106,6 +104,8 @@ const loadPendingIntents = async () =>
       location,
       description,
       target_usdc_base_units::text AS "targetUsdcBaseUnits",
+      start_time AS "startTime",
+      end_time AS "endTime",
       LOWER(crowdfund_contract_address) AS "crowdfundAddress",
       LOWER(created_by_address) AS "createdByAddress",
       attempt_count AS "attemptCount"
@@ -273,6 +273,12 @@ const deployContractsForIntent = async (intent) => {
     );
   }
 
+  if (Number(intent.chainId) === 84532 && usdcAddress !== OFFICIAL_BASE_SEPOLIA_USDC) {
+    throw new Error(
+      `Invalid Base Sepolia USDC address ${usdcAddress}. Expected official ${OFFICIAL_BASE_SEPOLIA_USDC}.`
+    );
+  }
+
   if (!/^0x[a-f0-9]{40}$/.test(intent.createdByAddress || '')) {
     throw new Error('Invalid created_by_address in intent');
   }
@@ -283,8 +289,13 @@ const deployContractsForIntent = async (intent) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const startTimestamp = BigInt(now + startDelaySeconds);
-  const endTimestamp = BigInt(now + startDelaySeconds + durationSeconds);
+  const parsedStartTime = intent.startTime ? Math.floor(new Date(intent.startTime).getTime() / 1000) : null;
+  const parsedEndTime = intent.endTime ? Math.floor(new Date(intent.endTime).getTime() / 1000) : null;
+  const startTimestamp = BigInt(parsedStartTime ?? now + startDelaySeconds);
+  const endTimestamp = BigInt(parsedEndTime ?? now + startDelaySeconds + durationSeconds);
+  if (endTimestamp <= startTimestamp) {
+    throw new Error('Invalid campaign schedule: endTime must be after startTime');
+  }
   const totalEquityForSale = targetUsdc * 1_000_000_000_000n; // 6 decimals -> 18 decimals
 
   const deployOnce = async () => {
@@ -328,8 +339,10 @@ const deployContractsForIntent = async (intent) => {
       profitDistributorArtifact.bytecode,
       signer
     );
+    // Profit deposits are executed by the operator worker, so the
+    // ProfitDistributor owner must be the operator signer.
     const profitDistributor = await profitFactory.deploy(
-      intent.createdByAddress,
+      operatorAddress,
       usdcAddress,
       equityAddress
     );
@@ -404,7 +417,7 @@ const processOnce = async () => {
   }
 
   console.log(
-    `processing ${intents.length} property intent(s) with maxAttempts=${maxAttempts}`
+    `processing ${intents.length} property intent(s) with maxAttempts=${maxAttempts} rpc=${rpcUrl}`
   );
   for (const intent of intents) {
     try {

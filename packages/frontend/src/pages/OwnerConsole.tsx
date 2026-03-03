@@ -9,7 +9,11 @@ import {
   createPlatformFeeIntent,
   createProfitDistributionIntent,
   createPropertyIntent,
+  fetchAdminMetrics,
   fetchCampaigns,
+  fetchProfitFlowStatus,
+  fetchProfitPreflight,
+  fetchProperties,
   fetchPlatformFeeIntents,
   fetchProfitDistributionIntents,
   fetchPropertyIntents,
@@ -19,8 +23,12 @@ import {
 import { signInWithBaseAccount } from '../lib/baseAccount';
 import { env } from '../config/env';
 import type {
+  AdminMetricsResponse,
   CampaignResponse,
   PlatformFeeIntentResponse,
+  ProfitFlowStatusResponse,
+  ProfitPreflightResponse,
+  PropertyResponse,
   ProfitDistributionIntentResponse,
   PropertyIntentResponse,
 } from '../lib/api';
@@ -63,6 +71,8 @@ export default function OwnerConsole() {
     description: '',
     location: '',
     targetUsdc: '',
+    startTime: '',
+    endTime: '',
     chainId: '84532',
   });
   const [platformFeeForm, setPlatformFeeForm] = useState({
@@ -78,11 +88,16 @@ export default function OwnerConsole() {
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [campaigns, setCampaigns] = useState<CampaignResponse[]>([]);
+  const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [propertyIntents, setPropertyIntents] = useState<PropertyIntentResponse[]>([]);
   const [profitIntents, setProfitIntents] = useState<ProfitDistributionIntentResponse[]>([]);
   const [platformFeeIntents, setPlatformFeeIntents] = useState<PlatformFeeIntentResponse[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [intentsLoading, setIntentsLoading] = useState(false);
+  const [adminMetrics, setAdminMetrics] = useState<AdminMetricsResponse | null>(null);
+  const [profitPreflight, setProfitPreflight] = useState<ProfitPreflightResponse | null>(null);
+  const [profitFlowStatus, setProfitFlowStatus] = useState<ProfitFlowStatusResponse | null>(null);
+  const [profitChecksLoading, setProfitChecksLoading] = useState(false);
   const [isAutoAuthenticating, setIsAutoAuthenticating] = useState(false);
   const lastAutoAuthAddressRef = useRef<string | null>(null);
 
@@ -97,6 +112,11 @@ export default function OwnerConsole() {
     connectedWalletAddress.toLowerCase() === address.toLowerCase();
   const canManageOwnerFlows = isOwnerSession && isConnected && hasMatchingConnectedWallet;
   const canViewOwnerConsole = canManageOwnerFlows || isAllowlistedConnectedWallet;
+  const normalizedProfitAmount = Number(profitForm.usdcAmount || '0');
+  const requestedProfitAmountBaseUnits =
+    Number.isFinite(normalizedProfitAmount) && normalizedProfitAmount > 0
+      ? Math.round(normalizedProfitAmount * 1_000_000).toString()
+      : '0';
 
   const intentStatusClass = (status: string) => {
     if (status === 'confirmed') return 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200';
@@ -282,6 +302,8 @@ export default function OwnerConsole() {
         description: propertyForm.description,
         location: propertyForm.location,
         targetUsdcBaseUnits: Math.round(Number(propertyForm.targetUsdc || '0') * 1_000_000).toString(),
+        startTime: propertyForm.startTime ? new Date(propertyForm.startTime).toISOString() : undefined,
+        endTime: propertyForm.endTime ? new Date(propertyForm.endTime).toISOString() : undefined,
         chainId: Number(propertyForm.chainId),
       };
 
@@ -291,6 +313,20 @@ export default function OwnerConsole() {
 
       if (!Number.isFinite(Number(propertyForm.targetUsdc)) || Number(propertyForm.targetUsdc) <= 0) {
         throw new Error('Target USDC must be greater than 0');
+      }
+
+      if ((propertyForm.startTime && !propertyForm.endTime) || (!propertyForm.startTime && propertyForm.endTime)) {
+        throw new Error('Provide both campaign start and end time');
+      }
+      if (propertyForm.startTime && propertyForm.endTime) {
+        const startMs = new Date(propertyForm.startTime).getTime();
+        const endMs = new Date(propertyForm.endTime).getTime();
+        if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+          throw new Error('Invalid campaign schedule');
+        }
+        if (endMs <= startMs) {
+          throw new Error('Campaign end time must be after start time');
+        }
       }
 
       await createPropertyIntent(payload, token);
@@ -303,6 +339,8 @@ export default function OwnerConsole() {
         description: '',
         location: '',
         targetUsdc: '',
+        startTime: '',
+        endTime: '',
         chainId: '84532',
       });
     } catch (error) {
@@ -375,6 +413,18 @@ export default function OwnerConsole() {
       if (!Number.isFinite(usdcAmount) || usdcAmount <= 0) {
         throw new Error('USDC amount must be greater than 0.');
       }
+      if (!profitPreflight) {
+        throw new Error('Profit preflight not loaded yet. Wait and retry.');
+      }
+      const failedChecks: string[] = [];
+      if (!profitPreflight.checks.operatorConfigured) failedChecks.push('operator wallet not configured');
+      if (!profitPreflight.checks.ownerMatchesOperator) failedChecks.push('profit distributor owner mismatch');
+      if (!profitPreflight.checks.hasSufficientBalance) failedChecks.push('insufficient operator USDC balance');
+      if (!profitPreflight.checks.indexerHealthy) failedChecks.push('indexer not healthy');
+      if (!profitPreflight.checks.workersHealthy) failedChecks.push('worker backlog indicates unhealthy worker execution');
+      if (failedChecks.length > 0) {
+        throw new Error(`Profit intent blocked by preflight: ${failedChecks.join(', ')}`);
+      }
 
       await createProfitDistributionIntent(
         {
@@ -399,11 +449,41 @@ export default function OwnerConsole() {
     }
   };
 
+  const handleQuickProfitIntent = async (propertyId: string, profitDistributorAddress: string) => {
+    setErrorMessage('');
+    setStatusMessage(`Submitting test profit intent for ${propertyId}...`);
+    try {
+      if (!token) {
+        throw new Error('You must be logged in as an owner to create profit intents.');
+      }
+
+      await createProfitDistributionIntent(
+        {
+          chainId: 84532,
+          propertyId,
+          profitDistributorAddress,
+          usdcAmountBaseUnits: (10 * 1_000_000).toString(),
+        },
+        token
+      );
+
+      setStatusMessage(`Test profit intent submitted for ${propertyId} (10 USDC).`);
+      void loadIntents(token);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+      setStatusMessage('');
+    }
+  };
+
   const loadCampaigns = async () => {
     setCampaignsLoading(true);
     try {
-      const data = await fetchCampaigns();
-      setCampaigns(data);
+      const [campaignData, propertyData] = await Promise.all([
+        fetchCampaigns(),
+        fetchProperties(),
+      ]);
+      setCampaigns(campaignData);
+      setProperties(propertyData);
     } catch (_error) {
       // Keep owner console usable even if campaign list fails.
     } finally {
@@ -417,19 +497,22 @@ export default function OwnerConsole() {
       setPropertyIntents([]);
       setProfitIntents([]);
       setPlatformFeeIntents([]);
+      setAdminMetrics(null);
       setIntentsLoading(false);
       return;
     }
 
     try {
-      const [propertyData, profitData, platformFeeData] = await Promise.all([
+      const [propertyData, profitData, platformFeeData, metrics] = await Promise.all([
         fetchPropertyIntents(authToken),
         fetchProfitDistributionIntents(authToken),
         fetchPlatformFeeIntents(authToken),
+        fetchAdminMetrics(authToken),
       ]);
       setPropertyIntents(propertyData);
       setProfitIntents(profitData);
       setPlatformFeeIntents(platformFeeData);
+      setAdminMetrics(metrics);
     } catch (_error) {
       // Keep console usable if one of the intent feeds fails.
     } finally {
@@ -443,6 +526,7 @@ export default function OwnerConsole() {
       return;
     }
     setCampaigns([]);
+    setProperties([]);
     setCampaignsLoading(false);
   }, [canViewOwnerConsole]);
 
@@ -454,6 +538,7 @@ export default function OwnerConsole() {
     setPropertyIntents([]);
     setProfitIntents([]);
     setPlatformFeeIntents([]);
+    setAdminMetrics(null);
     setIntentsLoading(false);
   }, [canManageOwnerFlows, token]);
 
@@ -535,6 +620,66 @@ export default function OwnerConsole() {
     isAutoAuthenticating,
     isConnected,
   ]);
+
+  useEffect(() => {
+    if (!profitForm.propertyId) {
+      return;
+    }
+    const selected = properties.find((property) => property.propertyId === profitForm.propertyId);
+    if (!selected) {
+      return;
+    }
+    if (
+      selected.profitDistributorAddress &&
+      selected.profitDistributorAddress !== profitForm.profitDistributorAddress
+    ) {
+      setProfitForm((prev) => ({
+        ...prev,
+        profitDistributorAddress: selected.profitDistributorAddress,
+      }));
+    }
+  }, [profitForm.propertyId, profitForm.profitDistributorAddress, properties]);
+
+  useEffect(() => {
+    if (!canManageOwnerFlows || !token || !profitForm.propertyId) {
+      setProfitPreflight(null);
+      setProfitFlowStatus(null);
+      setProfitChecksLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setProfitChecksLoading(true);
+
+    void (async () => {
+      try {
+        const [preflight, flow] = await Promise.all([
+          fetchProfitPreflight(token, {
+            propertyId: profitForm.propertyId,
+            usdcAmountBaseUnits: requestedProfitAmountBaseUnits,
+          }),
+          fetchProfitFlowStatus(token, profitForm.propertyId),
+        ]);
+        if (!cancelled) {
+          setProfitPreflight(preflight);
+          setProfitFlowStatus(flow);
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setProfitPreflight(null);
+          setProfitFlowStatus(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setProfitChecksLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageOwnerFlows, profitForm.propertyId, requestedProfitAmountBaseUnits, token]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -662,6 +807,26 @@ export default function OwnerConsole() {
                 Stored as USDC base units in the backend intent queue.
               </div>
             </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-sm text-gray-600 dark:text-gray-300">
+                Campaign Start
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                  value={propertyForm.startTime}
+                  onChange={(event) => handlePropertyChange('startTime', event.target.value)}
+                />
+              </label>
+              <label className="text-sm text-gray-600 dark:text-gray-300">
+                Campaign End
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                  value={propertyForm.endTime}
+                  onChange={(event) => handlePropertyChange('endTime', event.target.value)}
+                />
+              </label>
+            </div>
             <div className="grid grid-cols-1 gap-4">
               <select
                 className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
@@ -673,7 +838,9 @@ export default function OwnerConsole() {
               </select>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              This submits `/v1/admin/properties/intents`. Onchain deployment should be executed by operator automation.
+              This submits `/v1/admin/properties/intents`. Onchain deployment is executed by operator
+              automation and new Base Sepolia campaigns are pinned to official USDC. If start/end are
+              empty, backend defaults are used.
             </p>
             <button
               className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700"
@@ -718,31 +885,49 @@ export default function OwnerConsole() {
           <p className="text-gray-500 dark:text-gray-400">No campaigns indexed yet.</p>
         ) : (
           <div className="space-y-3">
-            {campaigns.slice(0, 8).map((campaign) => (
-              <div
-                key={campaign.campaignAddress}
-                className="rounded border border-gray-200 p-3 text-sm dark:border-gray-700"
-              >
-                <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Property</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{campaign.propertyId}</span>
+            {campaigns.slice(0, 8).map((campaign) => {
+              const propertyMeta = properties.find(
+                (property) => property.propertyId === campaign.propertyId
+              );
+              const profitDistributorAddress = propertyMeta?.profitDistributorAddress || '';
+
+              return (
+                <div
+                  key={campaign.campaignAddress}
+                  className="rounded border border-gray-200 p-3 text-sm dark:border-gray-700"
+                >
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Property</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{campaign.propertyId}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Platform Fee</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {campaign.platformFeeBps === null
+                        ? 'Not available'
+                        : `${(campaign.platformFeeBps / 100).toFixed(2)}%`}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Fee Recipient</span>
+                    <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                      {campaign.platformFeeRecipient ?? 'Not available'}
+                    </span>
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      className="rounded border border-primary-600 px-3 py-1 text-xs text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                      onClick={() =>
+                        void handleQuickProfitIntent(campaign.propertyId, profitDistributorAddress)
+                      }
+                      disabled={!canManageOwnerFlows || !profitDistributorAddress}
+                    >
+                      Deposit Test Profit (10 USDC)
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-1 flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Platform Fee</span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {campaign.platformFeeBps === null
-                      ? 'Not available'
-                      : `${(campaign.platformFeeBps / 100).toFixed(2)}%`}
-                  </span>
-                </div>
-                <div className="mt-1 flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Fee Recipient</span>
-                  <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
-                    {campaign.platformFeeRecipient ?? 'Not available'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -752,12 +937,18 @@ export default function OwnerConsole() {
           Create Profit Distribution Intent
         </h2>
         <div className="grid gap-4 md:grid-cols-3">
-          <input
+          <select
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-            placeholder="Property ID"
             value={profitForm.propertyId}
             onChange={(event) => handleProfitChange('propertyId', event.target.value)}
-          />
+          >
+            <option value="">Select property</option>
+            {properties.map((property) => (
+              <option key={property.propertyId} value={property.propertyId}>
+                {property.propertyId}
+              </option>
+            ))}
+          </select>
           <input
             className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
             placeholder="Profit distributor address (0x...)"
@@ -776,10 +967,70 @@ export default function OwnerConsole() {
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Creates `/v1/admin/profits/intents` for operator execution.
         </p>
+        <div className="mt-3 rounded border border-gray-200 p-3 text-xs dark:border-gray-700">
+          <div className="font-semibold text-gray-700 dark:text-gray-200">Preflight Checks</div>
+          {profitChecksLoading && (
+            <div className="mt-2 text-gray-500 dark:text-gray-400">Loading checks...</div>
+          )}
+          {!profitChecksLoading && !profitPreflight && (
+            <div className="mt-2 text-gray-500 dark:text-gray-400">
+              Select a property to load preflight checks.
+            </div>
+          )}
+          {profitPreflight && (
+            <div className="mt-2 space-y-1 text-gray-600 dark:text-gray-300">
+              <div>Operator: {profitPreflight.operatorAddress ?? 'Not configured'}</div>
+              <div>Distributor owner: {profitPreflight.distributorOwner}</div>
+              <div>
+                Balance/Allowance: {(Number(profitPreflight.operatorUsdcBalanceBaseUnits) / 1_000_000).toLocaleString()} /
+                {(Number(profitPreflight.operatorAllowanceBaseUnits) / 1_000_000).toLocaleString()} USDC
+              </div>
+              <div>
+                Checks:{' '}
+                {[
+                  ['operatorConfigured', profitPreflight.checks.operatorConfigured],
+                  ['ownerMatchesOperator', profitPreflight.checks.ownerMatchesOperator],
+                  ['hasSufficientBalance', profitPreflight.checks.hasSufficientBalance],
+                  ['hasSufficientAllowance', profitPreflight.checks.hasSufficientAllowance],
+                  ['indexerHealthy', profitPreflight.checks.indexerHealthy],
+                  ['workersHealthy', profitPreflight.checks.workersHealthy],
+                ]
+                  .map(([label, ok]) => `${ok ? 'OK' : 'FAIL'} ${label}`)
+                  .join(' | ')}
+              </div>
+            </div>
+          )}
+          {profitFlowStatus && (
+            <div className="mt-3 border-t border-gray-200 pt-2 text-gray-600 dark:border-gray-700 dark:text-gray-300">
+              <div className="font-semibold text-gray-700 dark:text-gray-200">Flow Status</div>
+              <div className="mt-1">
+                {[
+                  ['Intent Submitted', profitFlowStatus.flags.intentSubmitted],
+                  ['Intent Confirmed', profitFlowStatus.flags.intentConfirmed],
+                  ['Deposit Indexed', profitFlowStatus.flags.depositIndexed],
+                  ['Claimable Pool > 0', profitFlowStatus.flags.claimablePoolPositive],
+                ]
+                  .map(([label, ok]) => `${ok ? 'OK' : 'PENDING'} ${label}`)
+                  .join(' -> ')}
+              </div>
+              <div className="mt-1">
+                Unclaimed pool: {(Number(profitFlowStatus.unclaimedPoolBaseUnits) / 1_000_000).toLocaleString()} USDC
+              </div>
+            </div>
+          )}
+        </div>
         <button
           className="mt-4 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700"
           onClick={handleCreateProfitIntent}
-          disabled={!canManageOwnerFlows}
+          disabled={
+            !canManageOwnerFlows ||
+            !profitPreflight ||
+            !profitPreflight.checks.operatorConfigured ||
+            !profitPreflight.checks.ownerMatchesOperator ||
+            !profitPreflight.checks.hasSufficientBalance ||
+            !profitPreflight.checks.indexerHealthy ||
+            !profitPreflight.checks.workersHealthy
+          }
         >
           Submit Profit Distribution Intent
         </button>
@@ -824,7 +1075,15 @@ export default function OwnerConsole() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-3 flex justify-end">
+        <div className="lg:col-span-3 flex items-center justify-between gap-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            Indexer:{' '}
+            {adminMetrics?.indexer?.byChain?.length
+              ? adminMetrics.indexer.byChain
+                  .map((entry) => `chain ${entry.chainId}: ${entry.lastIndexedBlock}`)
+                  .join(' | ')
+              : 'No indexer state yet'}
+          </div>
           <button
             className="text-sm border border-gray-300 dark:border-gray-600 px-3 py-1 rounded"
             onClick={() => void loadIntents(token)}
@@ -857,6 +1116,14 @@ export default function OwnerConsole() {
                   <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     Attempts: {intent.attemptCount}
                   </div>
+                  {(intent.startTime || intent.endTime) && (
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Schedule:{' '}
+                      {intent.startTime ? new Date(intent.startTime).toLocaleString() : 'N/A'}{' '}
+                      {'->'}{' '}
+                      {intent.endTime ? new Date(intent.endTime).toLocaleString() : 'N/A'}
+                    </div>
+                  )}
                   {intent.errorMessage && (
                     <div className="mt-1 text-xs text-red-600 dark:text-red-300">{intent.errorMessage}</div>
                   )}

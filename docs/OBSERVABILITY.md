@@ -40,6 +40,23 @@ Returns:
 - indexer `last_block` and lag by `chain_id`
 - intent status counts and stale-submitted counts by table
 
+### Alert Gate (Threshold Checks)
+
+Command:
+
+```bash
+pnpm --filter @homeshare/backend intents:alert
+```
+
+Checks:
+- failed/stale intent thresholds per intent table
+- RPC connectivity + latency threshold
+- indexer lag threshold per chain
+
+Exit behavior:
+- `0`: all checks passed
+- `1`: one or more threshold violations
+
 ## Dashboard Specification
 
 Create four dashboards.

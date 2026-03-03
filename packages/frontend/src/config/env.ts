@@ -7,4 +7,13 @@ export const env = {
     .split(',')
     .map((value: string) => value.trim().toLowerCase())
     .filter(Boolean),
+  BASE_SEPOLIA_WETH:
+    import.meta.env.VITE_BASE_SEPOLIA_WETH || '0x4200000000000000000000000000000000000006',
+  BASE_SEPOLIA_SWAP_ROUTER: import.meta.env.VITE_BASE_SEPOLIA_SWAP_ROUTER || '',
+  BASE_SEPOLIA_QUOTER: import.meta.env.VITE_BASE_SEPOLIA_QUOTER || '',
+  BASE_SEPOLIA_SWAP_POOL_FEE: Number(import.meta.env.VITE_BASE_SEPOLIA_SWAP_POOL_FEE || '500'),
+  BASE_BUILDER_CODES: (import.meta.env.VITE_BASE_BUILDER_CODES || '')
+    .split(',')
+    .map((value: string) => value.trim())
+    .filter(Boolean),
 };

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../db/index.js';
 import { AuthenticatedRequest } from '../../middleware/auth.js';
+import { sendError } from '../../lib/apiError.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
   ValidationError,
@@ -12,10 +13,10 @@ import {
 
 const handleError = (res: Response, error: unknown) => {
   if (error instanceof ValidationError) {
-    return res.status(error.status).json({ error: error.message });
+    return sendError(res, error.status, error.message, 'validation_error');
   }
   console.error(error);
-  return res.status(500).json({ error: 'Internal server error' });
+  return sendError(res, 500, 'Internal server error', 'internal_error');
 };
 
 const requireUserAddress = (req: AuthenticatedRequest): string => {

@@ -28,6 +28,8 @@ export interface PropertyIntentPayload {
   description: string;
   location: string;
   targetUsdcBaseUnits: string;
+  startTime?: string;
+  endTime?: string;
   crowdfundAddress?: string;
 }
 
@@ -55,6 +57,8 @@ export interface PropertyIntentResponse {
   location: string;
   description: string;
   targetUsdcBaseUnits: string;
+  startTime: string | null;
+  endTime: string | null;
   crowdfundAddress: string | null;
   status: IntentStatus;
   txHash: string | null;
@@ -164,6 +168,84 @@ export interface ProfitClaimResponse {
   createdAt: string;
 }
 
+export interface EthUsdcQuoteResponse {
+  chainId: number;
+  usdcAddress: string;
+  amountEth: string;
+  amountInWei: string;
+  estimatedUsdcBaseUnits: string;
+  estimatedUsdc: string;
+  minUsdcOutBaseUnits: string;
+  minUsdcOut: string;
+  slippageBps: number;
+  feeTier: number;
+  source: string;
+}
+
+export interface AdminMetricsResponse {
+  timestamp: string;
+  uptimeSeconds: number;
+  process: {
+    rssBytes: number;
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+    externalBytes: number;
+  };
+  indexer: {
+    byChain: Array<{
+      chainId: number;
+      lastIndexedBlock: number;
+    }>;
+  };
+}
+
+export interface ProfitPreflightResponse {
+  propertyId: string;
+  chainId: number;
+  profitDistributorAddress: string;
+  usdcTokenAddress: string;
+  operatorAddress: string | null;
+  distributorOwner: string;
+  requiredUsdcAmountBaseUnits: string;
+  operatorUsdcBalanceBaseUnits: string;
+  operatorAllowanceBaseUnits: string;
+  checks: {
+    operatorConfigured: boolean;
+    ownerMatchesOperator: boolean;
+    hasSufficientBalance: boolean;
+    hasSufficientAllowance: boolean;
+    indexerHealthy: boolean;
+    workersHealthy: boolean;
+  };
+  observability: {
+    indexerLastBlock: number;
+    staleSubmittedIntents: number;
+  };
+}
+
+export interface ProfitFlowStatusResponse {
+  propertyId: string;
+  flags: {
+    intentSubmitted: boolean;
+    intentConfirmed: boolean;
+    depositIndexed: boolean;
+    claimablePoolPositive: boolean;
+  };
+  latestIntent: {
+    id: string;
+    status: string;
+    submittedAt: string | null;
+    confirmedAt: string | null;
+    txHash: string | null;
+  } | null;
+  latestDeposit: {
+    txHash: string;
+    createdAt: string;
+    amountBaseUnits: string;
+  } | null;
+  unclaimedPoolBaseUnits: string;
+}
+
 export async function loginWithWallet(payload: {
   address: string;
   signature: string;
@@ -205,6 +287,8 @@ export async function createPropertyIntent(payload: PropertyIntentPayload, token
       location: payload.location,
       description: payload.description,
       targetUsdcBaseUnits: payload.targetUsdcBaseUnits,
+      startTime: payload.startTime ?? null,
+      endTime: payload.endTime ?? null,
       crowdfundAddress: payload.crowdfundAddress,
     }),
   });
@@ -312,6 +396,55 @@ export async function fetchPlatformFeeIntents(
   return data.intents ?? [];
 }
 
+export async function fetchAdminMetrics(token: string): Promise<AdminMetricsResponse> {
+  const response = await fetch(`${API_V1_BASE}/admin/metrics`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch admin metrics');
+  }
+  return response.json();
+}
+
+export async function fetchProfitPreflight(
+  token: string,
+  params: { propertyId: string; usdcAmountBaseUnits?: string }
+): Promise<ProfitPreflightResponse> {
+  const search = new URLSearchParams({ propertyId: params.propertyId });
+  if (params.usdcAmountBaseUnits) {
+    search.set('usdcAmountBaseUnits', params.usdcAmountBaseUnits);
+  }
+  const response = await fetch(`${API_V1_BASE}/admin/profits/preflight?${search.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to fetch profit preflight' }));
+    throw new Error(error.error || 'Failed to fetch profit preflight');
+  }
+  return response.json();
+}
+
+export async function fetchProfitFlowStatus(
+  token: string,
+  propertyId: string
+): Promise<ProfitFlowStatusResponse> {
+  const search = new URLSearchParams({ propertyId });
+  const response = await fetch(`${API_V1_BASE}/admin/profits/flow-status?${search.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to fetch profit flow status' }));
+    throw new Error(error.error || 'Failed to fetch profit flow status');
+  }
+  return response.json();
+}
+
 export async function fetchProperties(): Promise<PropertyResponse[]> {
   const response = await fetch(`${API_V1_BASE}/properties`);
 
@@ -379,6 +512,19 @@ export async function fetchCampaign(campaignAddress: string): Promise<CampaignRe
   return data.campaign as CampaignResponse;
 }
 
+export async function fetchCampaignInvestments(
+  campaignAddress: string
+): Promise<InvestmentResponse[]> {
+  const response = await fetch(
+    `${API_V1_BASE}/campaigns/${encodeURIComponent(campaignAddress)}/investments`
+  );
+  if (!response.ok) {
+    throw new Error('Failed to fetch campaign investments');
+  }
+  const data = await response.json();
+  return data.investments ?? [];
+}
+
 export async function fetchMyEquityClaims(token: string): Promise<EquityClaimResponse[]> {
   const response = await fetch(`${API_V1_BASE}/me/equity-claims`, {
     headers: {
@@ -413,4 +559,28 @@ export async function fetchMyProfitClaims(token: string): Promise<ProfitClaimRes
 
   const data = await response.json();
   return data.profitClaims ?? [];
+}
+
+export async function fetchEthUsdcQuote(payload: {
+  amountEth: string;
+  slippagePercent: string;
+  usdcAddress?: string;
+}): Promise<EthUsdcQuoteResponse> {
+  const params = new URLSearchParams({
+    amountEth: payload.amountEth,
+    slippagePercent: payload.slippagePercent,
+  });
+  if (payload.usdcAddress) {
+    params.set('usdcAddress', payload.usdcAddress);
+  }
+  const response = await fetch(`${API_V1_BASE}/quotes/eth-usdc?${params.toString()}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to fetch ETH/USDC quote' }));
+    throw new Error(error.error || 'Failed to fetch ETH/USDC quote');
+  }
+  const data = await response.json();
+  if (!data?.quote) {
+    throw new Error('Invalid quote response');
+  }
+  return data.quote as EthUsdcQuoteResponse;
 }

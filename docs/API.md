@@ -14,6 +14,28 @@ Production: https://api.yourdomain.com/v1
 - Current indexed data controllers are scoped to Base Sepolia chain ID `84532`.
 - IP-based rate limiting is enabled by default on auth and `/v1` endpoints; over-limit requests return `429`.
 
+## Error Model
+
+All error responses follow this shape:
+
+```json
+{
+  "error": "Human-readable message",
+  "code": "machine_readable_code"
+}
+```
+
+Common `code` values:
+- `bad_request`
+- `validation_error`
+- `unauthorized`
+- `forbidden`
+- `not_found`
+- `rate_limited`
+- `service_unavailable`
+- `authentication_failed`
+- `internal_error`
+
 ## Authentication
 
 ### Get Nonce
@@ -174,6 +196,8 @@ Request body:
   "location": "New York, NY",
   "description": "Two-bedroom apartment",
   "targetUsdcBaseUnits": "1000000000",
+  "startTime": "2026-03-10T09:00:00.000Z",
+  "endTime": "2026-04-10T09:00:00.000Z",
   "crowdfundAddress": "0x..."
 }
 ```

@@ -22,6 +22,15 @@ type ProfitDistributorRow = {
   contract_address: string;
 };
 
+type ParsedChainLog = {
+  address: string;
+  topics: string[];
+  data: string;
+  transactionHash: string;
+  blockNumber: number;
+  logIndex: number;
+};
+
 export class Indexer {
   private provider: JsonRpcProvider;
   private db: Sequelize;
@@ -48,13 +57,29 @@ export class Indexer {
   private deploymentBlock: number;
   private batchSize: number;
   private txSenderCache = new Map<string, string>();
+  private forcedCrowdfundAddresses: string[];
+  private forceStartBlock: boolean;
 
-  constructor(provider: JsonRpcProvider, db: Sequelize, options?: { dryRun?: boolean; deploymentBlock?: number; batchSize?: number }) {
+  constructor(
+    provider: JsonRpcProvider,
+    db: Sequelize,
+    options?: {
+      dryRun?: boolean;
+      deploymentBlock?: number;
+      batchSize?: number;
+      forcedCrowdfundAddresses?: string[];
+      forceStartBlock?: boolean;
+    }
+  ) {
     this.provider = provider;
     this.db = db;
     this.dryRun = options?.dryRun ?? false;
     this.deploymentBlock = options?.deploymentBlock ?? 0;
     this.batchSize = options?.batchSize ?? DEFAULT_BATCH_SIZE;
+    this.forcedCrowdfundAddresses = (options?.forcedCrowdfundAddresses ?? [])
+      .map((value) => value.toLowerCase())
+      .filter((value) => /^0x[a-f0-9]{40}$/.test(value));
+    this.forceStartBlock = options?.forceStartBlock ?? false;
   }
 
   async sync(): Promise<void> {
@@ -64,7 +89,13 @@ export class Indexer {
 
     const lastBlock = await this.getLastIndexedBlock(chainId);
     const latestBlock = await this.provider.getBlockNumber();
-    const fromBlock = Math.max(this.deploymentBlock, lastBlock - REORG_DEPTH);
+    const fromBlock = this.forceStartBlock
+      ? this.deploymentBlock
+      : Math.max(this.deploymentBlock, lastBlock - REORG_DEPTH);
+
+    console.log(
+      `[Indexer] sync_start chain=${chainId} latest=${latestBlock} lastIndexed=${lastBlock} deploymentBlock=${this.deploymentBlock} fromBlock=${fromBlock} forceStart=${this.forceStartBlock}`
+    );
 
     await this.pruneReorgRange(fromBlock);
 
@@ -154,9 +185,30 @@ export class Indexer {
   }
 
   async processBatch(chainId: number, fromBlock: number, toBlock: number): Promise<void> {
-    const campaigns = await this.getCampaigns();
-    const distributors = await this.getProfitDistributors();
+    const campaigns = await this.getCampaigns(chainId);
+    const knownCrowdfundAddresses = Array.from(
+      new Set([
+        ...(await this.getPropertyCrowdfundAddresses(chainId)),
+        ...this.forcedCrowdfundAddresses,
+      ])
+    );
     const campaignMap = new Map(campaigns.map((c) => [c.contract_address.toLowerCase(), c]));
+
+    // Ensure campaigns exist for crowdfund contracts stored by the intent worker.
+    for (const address of knownCrowdfundAddresses) {
+      if (campaignMap.has(address.toLowerCase())) {
+        continue;
+      }
+      const ensured = await this.db.transaction((transaction) =>
+        this.ensureCampaign(transaction, chainId, address.toLowerCase())
+      );
+      if (ensured) {
+        campaigns.push(ensured);
+        campaignMap.set(ensured.contract_address.toLowerCase(), ensured);
+      }
+    }
+
+    const distributors = await this.getProfitDistributors(chainId);
     const distributorMap = new Map(distributors.map((d) => [d.contract_address.toLowerCase(), d]));
 
     const campaignAddresses = campaigns.map((campaign) => campaign.contract_address);
@@ -203,14 +255,17 @@ export class Indexer {
       campaignsUpdated: 0,
     };
 
-    const sortedCrowdfundLogs = [...crowdfundLogs].sort((a, b) => {
+    const normalizedCrowdfundLogs = crowdfundLogs.map((log) => this.normalizeLog(log));
+    const normalizedProfitLogs = profitLogs.map((log) => this.normalizeLog(log));
+
+    const sortedCrowdfundLogs = [...normalizedCrowdfundLogs].sort((a, b) => {
       if (a.blockNumber !== b.blockNumber) {
         return a.blockNumber - b.blockNumber;
       }
       return a.logIndex - b.logIndex;
     });
 
-    const sortedProfitLogs = [...profitLogs].sort((a, b) => {
+    const sortedProfitLogs = [...normalizedProfitLogs].sort((a, b) => {
       if (a.blockNumber !== b.blockNumber) {
         return a.blockNumber - b.blockNumber;
       }
@@ -383,6 +438,18 @@ export class Indexer {
       toBlock,
       topics: [topic0],
     });
+  }
+
+  private normalizeLog(log: any): ParsedChainLog {
+    return {
+      address: String(log.address).toLowerCase(),
+      topics: Array.isArray(log.topics) ? log.topics : [],
+      data: String(log.data ?? '0x'),
+      transactionHash: String(log.transactionHash),
+      blockNumber: Number(log.blockNumber),
+      // ethers v6 log objects can expose `index` instead of `logIndex`
+      logIndex: Number(log.logIndex ?? log.index ?? 0),
+    };
   }
 
   private async ensureCampaign(
@@ -571,16 +638,31 @@ export class Indexer {
     return value as string;
   }
 
-  private async getCampaigns(): Promise<CampaignRow[]> {
+  private async getCampaigns(chainId: number): Promise<CampaignRow[]> {
     const [rows] = await this.db.query<CampaignRow>(
-      'SELECT id, property_id, contract_address FROM campaigns'
+      'SELECT id, property_id, contract_address FROM campaigns WHERE chain_id = :chainId',
+      { replacements: { chainId } }
     );
     return rows;
   }
 
-  private async getProfitDistributors(): Promise<ProfitDistributorRow[]> {
+  private async getPropertyCrowdfundAddresses(chainId: number): Promise<string[]> {
+    const [rows] = await this.db.query<{ contract_address: string }>(
+      `
+      SELECT DISTINCT LOWER(crowdfund_contract_address) AS contract_address
+      FROM properties
+      WHERE chain_id = :chainId
+        AND crowdfund_contract_address IS NOT NULL
+      `,
+      { replacements: { chainId } }
+    );
+    return rows.map((row) => row.contract_address).filter(Boolean);
+  }
+
+  private async getProfitDistributors(chainId: number): Promise<ProfitDistributorRow[]> {
     const [rows] = await this.db.query<ProfitDistributorRow>(
-      'SELECT id, property_id, contract_address FROM profit_distributors'
+      'SELECT id, property_id, contract_address FROM profit_distributors WHERE chain_id = :chainId',
+      { replacements: { chainId } }
     );
     return rows;
   }

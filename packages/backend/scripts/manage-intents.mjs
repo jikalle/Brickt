@@ -16,6 +16,7 @@ const usage = () => {
   node scripts/manage-intents.mjs list <table> [status] [limit]
   node scripts/manage-intents.mjs inspect <table> <id>
   node scripts/manage-intents.mjs retry <table> <id>
+  node scripts/manage-intents.mjs reset <table> <id>
   node scripts/manage-intents.mjs set-crowdfund <intent_id> <crowdfund_address>
 
 Valid <table> values:
@@ -126,6 +127,39 @@ const retryIntent = async (table, id) => {
   console.log(JSON.stringify(result[0], null, 2));
 };
 
+const resetIntent = async (table, id) => {
+  assertTable(table);
+  if (!id) {
+    throw new Error('id is required');
+  }
+
+  const [result] = await sequelize.query(
+    `
+    UPDATE ${table}
+    SET status = 'pending',
+        tx_hash = NULL,
+        error_message = NULL,
+        submitted_at = NULL,
+        confirmed_at = NULL,
+        attempt_count = 0,
+        updated_at = NOW()
+    WHERE id = :id
+      AND status <> 'confirmed'
+    RETURNING id, status, attempt_count AS "attemptCount", updated_at AS "updatedAt"
+    `,
+    {
+      replacements: { id },
+    }
+  );
+
+  if (!Array.isArray(result) || result.length === 0) {
+    console.log(`No non-confirmed intent updated for id=${id}`);
+    return;
+  }
+
+  console.log(JSON.stringify(result[0], null, 2));
+};
+
 const setCrowdfund = async (id, crowdfundAddressRaw) => {
   const table = 'property_intents';
   assertTable(table);
@@ -172,7 +206,9 @@ const setCrowdfund = async (id, crowdfundAddressRaw) => {
   console.log(JSON.stringify(result[0], null, 2));
 };
 
-const [command, table, arg3, arg4] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const args = rawArgs[0] === '--' ? rawArgs.slice(1) : rawArgs;
+const [command, table, arg3, arg4] = args;
 
 try {
   if (!command) {
@@ -186,6 +222,8 @@ try {
     await inspectIntent(table, arg3);
   } else if (command === 'retry') {
     await retryIntent(table, arg3);
+  } else if (command === 'reset') {
+    await resetIntent(table, arg3);
   } else if (command === 'set-crowdfund') {
     await setCrowdfund(table, arg3);
   } else {
