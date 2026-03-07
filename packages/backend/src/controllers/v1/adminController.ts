@@ -1,5 +1,9 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { createHash, randomUUID } from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { Contract, Interface, JsonRpcProvider, MaxUint256, Wallet } from 'ethers';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../db/index.js';
@@ -24,6 +28,260 @@ const handleError = (res: Response, error: unknown) => {
   }
   console.error(error);
   return sendError(res, 500, 'Internal server error', 'internal_error');
+};
+
+const execFileAsync = promisify(execFile);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const backendPackageRoot = resolve(__dirname, '../../../');
+const PROCESSING_RUN_TIMEOUT_MS = 4 * 60 * 1000;
+const noWorkerModeEnabled = process.env.NO_WORKER_MODE === 'true';
+
+let processingRunInFlight = false;
+
+const getWorkersHealthyValue = (staleSubmittedIntents: number): boolean =>
+  noWorkerModeEnabled ? true : staleSubmittedIntents === 0;
+
+type ProcessingStepKey =
+  | 'propertyIntents'
+  | 'campaignLifecycle'
+  | 'platformFeeIntents'
+  | 'profitIntents'
+  | 'indexerSync';
+
+type ProcessingStepResult = {
+  key: ProcessingStepKey;
+  label: string;
+  status: 'ok' | 'failed';
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+};
+
+type ProcessingRunRecord = {
+  id: string;
+  triggerSource: 'manual' | 'cron';
+  processingMode: 'manual_no_worker' | 'hybrid';
+  status: 'ok' | 'failed';
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  steps: ProcessingStepResult[];
+  createdAt: string;
+};
+
+const processingSteps: Array<{ key: ProcessingStepKey; label: string; script: string }> = [
+  {
+    key: 'propertyIntents',
+    label: 'Property Intents',
+    script: 'scripts/process-property-intents.mjs',
+  },
+  {
+    key: 'campaignLifecycle',
+    label: 'Campaign Lifecycle',
+    script: 'scripts/process-campaign-lifecycle.mjs',
+  },
+  {
+    key: 'platformFeeIntents',
+    label: 'Platform Fee Intents',
+    script: 'scripts/process-platform-fee-intents.mjs',
+  },
+  {
+    key: 'profitIntents',
+    label: 'Profit Intents',
+    script: 'scripts/process-profit-intents.mjs',
+  },
+  {
+    key: 'indexerSync',
+    label: 'Indexer Sync',
+    script: 'scripts/process-indexer-sync.mjs',
+  },
+];
+
+const parseOptionalBoolean = (value: unknown, field: string): boolean | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  const normalized = value.toString().trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  throw new ValidationError(`Invalid ${field}. Use true or false`);
+};
+
+const getCronTokenFromRequest = (req: Request): string => {
+  const fromHeader =
+    req.header('x-cron-token') ||
+    req.header('x-processing-token') ||
+    req.header('authorization')?.replace(/^Bearer\s+/i, '');
+  const fromQuery = req.query.token?.toString();
+  const fromBody = req.body?.token?.toString?.();
+  return (fromHeader || fromQuery || fromBody || '').trim();
+};
+
+const ensureCronTokenAuthorized = (req: Request): void => {
+  const configuredToken = (process.env.PROCESSING_CRON_TOKEN || '').trim();
+  if (!configuredToken) {
+    throw new ValidationError(
+      'PROCESSING_CRON_TOKEN is not configured on server',
+      503
+    );
+  }
+  const providedToken = getCronTokenFromRequest(req);
+  if (!providedToken || providedToken !== configuredToken) {
+    throw new ValidationError('Invalid cron token', 401);
+  }
+};
+
+const insertProcessingRun = async (record: {
+  triggerSource: 'manual' | 'cron';
+  processingMode: 'manual_no_worker' | 'hybrid';
+  status: 'ok' | 'failed';
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  steps: ProcessingStepResult[];
+}) => {
+  await sequelize.query(
+    `
+    INSERT INTO processing_runs (
+      trigger_source,
+      processing_mode,
+      status,
+      started_at,
+      finished_at,
+      duration_ms,
+      steps_json
+    ) VALUES (
+      :triggerSource,
+      :processingMode,
+      :status,
+      :startedAt,
+      :finishedAt,
+      :durationMs,
+      :steps::jsonb
+    )
+    `,
+    {
+      replacements: {
+        triggerSource: record.triggerSource,
+        processingMode: record.processingMode,
+        status: record.status,
+        startedAt: record.startedAt,
+        finishedAt: record.finishedAt,
+        durationMs: Math.max(0, Math.round(record.durationMs)),
+        steps: JSON.stringify(record.steps),
+      },
+    }
+  );
+};
+
+const runProcessingSteps = async (options: {
+  triggerSource: 'manual' | 'cron';
+  includePropertyIntents: boolean;
+  includeCampaignLifecycle: boolean;
+  includePlatformFeeIntents: boolean;
+  includeProfitIntents: boolean;
+  includeIndexerSync: boolean;
+}) => {
+  if (processingRunInFlight) {
+    throw new ValidationError(
+      'A processing run is already in progress. Please wait for it to finish.',
+      409
+    );
+  }
+
+  const stepConfig = new Map<ProcessingStepKey, boolean>([
+    ['propertyIntents', options.includePropertyIntents],
+    ['campaignLifecycle', options.includeCampaignLifecycle],
+    ['platformFeeIntents', options.includePlatformFeeIntents],
+    ['profitIntents', options.includeProfitIntents],
+    ['indexerSync', options.includeIndexerSync],
+  ]);
+  const selectedSteps = processingSteps.filter((step) => stepConfig.get(step.key));
+  if (selectedSteps.length === 0) {
+    throw new ValidationError('At least one processing step must be enabled');
+  }
+
+  processingRunInFlight = true;
+  const startedAtIso = new Date().toISOString();
+  const startedAtMs = Date.now();
+  const steps: ProcessingStepResult[] = [];
+
+  try {
+    for (const step of selectedSteps) {
+      const scriptPath = resolve(backendPackageRoot, step.script);
+      try {
+        const { stdout, stderr } = await execFileAsync('node', [scriptPath], {
+          cwd: backendPackageRoot,
+          env: process.env,
+          timeout: PROCESSING_RUN_TIMEOUT_MS,
+          maxBuffer: 2 * 1024 * 1024,
+        });
+        steps.push({
+          key: step.key,
+          label: step.label,
+          status: 'ok',
+          exitCode: 0,
+          stdout: stdout ?? '',
+          stderr: stderr ?? '',
+          error: null,
+        });
+      } catch (error) {
+        const typedError = error as {
+          code?: number | string;
+          message?: string;
+          stdout?: string;
+          stderr?: string;
+        };
+        steps.push({
+          key: step.key,
+          label: step.label,
+          status: 'failed',
+          exitCode: typeof typedError.code === 'number' ? typedError.code : null,
+          stdout: typedError.stdout ?? '',
+          stderr: typedError.stderr ?? '',
+          error: typedError.message ?? 'Processing step failed',
+        });
+        break;
+      }
+    }
+  } finally {
+    processingRunInFlight = false;
+  }
+
+  const finishedAtIso = new Date().toISOString();
+  const hasFailure = steps.some((step) => step.status === 'failed');
+  const processingMode = noWorkerModeEnabled ? 'manual_no_worker' : 'hybrid';
+  const payload = {
+    processingMode,
+    startedAt: startedAtIso,
+    finishedAt: finishedAtIso,
+    durationMs: Date.now() - startedAtMs,
+    steps,
+  } as const;
+
+  await insertProcessingRun({
+    triggerSource: options.triggerSource,
+    processingMode,
+    status: hasFailure ? 'failed' : 'ok',
+    startedAt: payload.startedAt,
+    finishedAt: payload.finishedAt,
+    durationMs: payload.durationMs,
+    steps,
+  });
+
+  return {
+    statusCode: hasFailure ? 207 : 200,
+    payload,
+  };
 };
 
 const requireAdminAddress = (req: AuthenticatedRequest): string => {
@@ -1257,6 +1515,98 @@ export const resetAdminIntent = async (req: AuthenticatedRequest, res: Response)
   }
 };
 
+export const runAdminProcessingNow = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    requireAdminAddress(req);
+    const includePropertyIntents =
+      parseOptionalBoolean(req.body?.propertyIntents, 'propertyIntents') ?? true;
+    const includeCampaignLifecycle =
+      parseOptionalBoolean(req.body?.campaignLifecycle, 'campaignLifecycle') ?? true;
+    const includePlatformFeeIntents =
+      parseOptionalBoolean(req.body?.platformFeeIntents, 'platformFeeIntents') ?? true;
+    const includeProfitIntents =
+      parseOptionalBoolean(req.body?.profitIntents, 'profitIntents') ?? true;
+    const includeIndexerSync = parseOptionalBoolean(req.body?.indexerSync, 'indexerSync') ?? true;
+    const result = await runProcessingSteps({
+      triggerSource: 'manual',
+      includePropertyIntents,
+      includeCampaignLifecycle,
+      includePlatformFeeIntents,
+      includeProfitIntents,
+      includeIndexerSync,
+    });
+    return res.status(result.statusCode).json(result.payload);
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const runCronProcessing = async (req: Request, res: Response) => {
+  try {
+    ensureCronTokenAuthorized(req);
+    const includePropertyIntents =
+      parseOptionalBoolean(req.body?.propertyIntents ?? req.query.propertyIntents, 'propertyIntents') ??
+      true;
+    const includeCampaignLifecycle =
+      parseOptionalBoolean(
+        req.body?.campaignLifecycle ?? req.query.campaignLifecycle,
+        'campaignLifecycle'
+      ) ?? true;
+    const includePlatformFeeIntents =
+      parseOptionalBoolean(
+        req.body?.platformFeeIntents ?? req.query.platformFeeIntents,
+        'platformFeeIntents'
+      ) ?? true;
+    const includeProfitIntents =
+      parseOptionalBoolean(req.body?.profitIntents ?? req.query.profitIntents, 'profitIntents') ??
+      true;
+    const includeIndexerSync =
+      parseOptionalBoolean(req.body?.indexerSync ?? req.query.indexerSync, 'indexerSync') ?? true;
+
+    const result = await runProcessingSteps({
+      triggerSource: 'cron',
+      includePropertyIntents,
+      includeCampaignLifecycle,
+      includePlatformFeeIntents,
+      includeProfitIntents,
+      includeIndexerSync,
+    });
+    return res.status(result.statusCode).json({
+      trigger: 'cron',
+      ...result.payload,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const getLastProcessingRun = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    requireAdminAddress(req);
+    const rows = await sequelize.query<ProcessingRunRecord>(
+      `
+      SELECT
+        id,
+        trigger_source AS "triggerSource",
+        processing_mode AS "processingMode",
+        status,
+        started_at AS "startedAt",
+        finished_at AS "finishedAt",
+        duration_ms AS "durationMs",
+        steps_json AS "steps",
+        created_at AS "createdAt"
+      FROM processing_runs
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      { type: QueryTypes.SELECT }
+    );
+    return res.json({ run: rows[0] ?? null });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
 export const getProfitPreflight = async (req: AuthenticatedRequest, res: Response) => {
   try {
     requireAdminAddress(req);
@@ -1377,7 +1727,7 @@ export const getProfitPreflight = async (req: AuthenticatedRequest, res: Respons
         hasSufficientBalance,
         hasSufficientAllowance,
         indexerHealthy: indexerLastBlock > 0,
-        workersHealthy: staleSubmittedIntents === 0,
+        workersHealthy: getWorkersHealthyValue(staleSubmittedIntents),
       },
       observability: {
         indexerLastBlock,
@@ -1736,7 +2086,7 @@ export const getPlatformFeePreflight = async (req: AuthenticatedRequest, res: Re
         recipientValid,
         alreadyApplied,
         indexerHealthy: indexerLastBlock > 0,
-        workersHealthy: staleSubmittedIntents === 0,
+        workersHealthy: getWorkersHealthyValue(staleSubmittedIntents),
       },
       observability: {
         indexerLastBlock,
@@ -2069,7 +2419,7 @@ export const getCampaignLifecyclePreflight = async (req: AuthenticatedRequest, r
         canFinalizeNow,
         canWithdrawNow,
         indexerHealthy: indexerLastBlock > 0,
-        workersHealthy: staleSubmittedIntents === 0,
+        workersHealthy: getWorkersHealthyValue(staleSubmittedIntents),
       },
       actions: {
         finalize: {

@@ -133,6 +133,21 @@ tail -n 120 /tmp/intent-workers.log
 pkill -f "process:intents:watch|start-intent-workers.mjs|process-property-intents.mjs|process-profit-intents.mjs|process-platform-fee-intents.mjs|process-indexer-sync.mjs|process-campaign-lifecycle.mjs" || true
 ```
 
+## 8b) No-Worker Cron Mode (Low-Cost)
+
+When `NO_WORKER_MODE=true`, you can trigger one processing cycle on demand from cron:
+
+```bash
+curl -X POST "http://localhost:3000/v1/admin/processing/cron?indexerSync=true" \
+  -H "x-cron-token: $PROCESSING_CRON_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Recommended schedule:
+- Every 2-5 minutes with `indexerSync=false`
+- Every 10-15 minutes with `indexerSync=true`
+
 ## 9) Go/No-Go Reminder
 
 Do not go public if any are true:
@@ -140,4 +155,3 @@ Do not go public if any are true:
 - Indexer is stale/lagging badly.
 - Intents are stuck in submitted state.
 - Full flow test is not fully passing.
-

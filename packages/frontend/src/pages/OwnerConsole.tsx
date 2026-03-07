@@ -17,6 +17,7 @@ import {
   fetchAdminProperties,
   fetchAdminMetrics,
   fetchCampaigns,
+  fetchAdminLastProcessingRun,
   fetchProfitFlowStatus,
   fetchProfitPreflight,
   fetchPlatformFeeFlowStatus,
@@ -30,6 +31,7 @@ import {
   loginWithWallet,
   resetAdminIntent,
   repairCampaignSetupAdmin,
+  runAdminProcessingNow,
   restoreAdminProperty,
   retryAdminIntent,
   updateAdminProperty,
@@ -44,6 +46,8 @@ import type {
   ProfitPreflightResponse,
   PlatformFeeFlowStatusResponse,
   PlatformFeePreflightResponse,
+  AdminProcessingRunResponse,
+  AdminLastProcessingRunResponse,
   AdminPropertyResponse,
   PropertyResponse,
   ProfitDistributionIntentResponse,
@@ -438,6 +442,11 @@ export default function OwnerConsole() {
   });
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isRunningManualProcessing, setIsRunningManualProcessing] = useState(false);
+  const [lastManualProcessingRun, setLastManualProcessingRun] =
+    useState<AdminProcessingRunResponse | null>(null);
+  const [lastObservedProcessingRun, setLastObservedProcessingRun] =
+    useState<AdminLastProcessingRunResponse['run']>(null);
   const [campaigns, setCampaigns] = useState<CampaignResponse[]>([]);
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [adminProperties, setAdminProperties] = useState<AdminPropertyResponse[]>([]);
@@ -921,6 +930,54 @@ export default function OwnerConsole() {
     dispatch(clearUser());
     setStatusMessage('Logged out.');
     setErrorMessage('');
+  };
+
+  const handleRunManualProcessing = async (withIndexer: boolean) => {
+    setErrorMessage('');
+    setStatusMessage(
+      withIndexer
+        ? 'Running one processing cycle (including indexer)...'
+        : 'Running one processing cycle...'
+    );
+    setIsRunningManualProcessing(true);
+    try {
+      if (!token) {
+        throw new Error('You must be logged in as an admin to run processing.');
+      }
+      const result = await runAdminProcessingNow(token, {
+        propertyIntents: true,
+        campaignLifecycle: true,
+        platformFeeIntents: true,
+        profitIntents: true,
+        indexerSync: withIndexer,
+      });
+      setLastManualProcessingRun(result);
+
+      const failedSteps = result.steps.filter((step) => step.status === 'failed');
+      if (failedSteps.length > 0) {
+        setErrorMessage(
+          `Processing finished with ${failedSteps.length} failed step(s): ${failedSteps
+            .map((step) => step.label)
+            .join(', ')}`
+        );
+      } else {
+        setStatusMessage(
+          `Processing cycle completed (${result.steps.length} step${
+            result.steps.length === 1 ? '' : 's'
+          }) in ${(result.durationMs / 1000).toFixed(1)}s.`
+        );
+      }
+
+      await Promise.all([loadIntents(token), loadCampaigns()]);
+      await refreshCombinedProgress(token);
+      const latestRun = await fetchAdminLastProcessingRun(token);
+      setLastObservedProcessingRun(latestRun.run);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+      setStatusMessage('');
+    } finally {
+      setIsRunningManualProcessing(false);
+    }
   };
 
   const handleCreateProperty = async () => {
@@ -2599,6 +2656,12 @@ export default function OwnerConsole() {
       setProfitIntents(profitData);
       setPlatformFeeIntents(platformFeeData);
       setAdminMetrics(metrics);
+      try {
+        const latestRun = await fetchAdminLastProcessingRun(authToken);
+        setLastObservedProcessingRun(latestRun.run);
+      } catch {
+        setLastObservedProcessingRun(null);
+      }
     } catch (_error) {
       // Keep console usable if one of the intent feeds fails.
     } finally {
@@ -2936,6 +2999,13 @@ export default function OwnerConsole() {
                       Settlement Wizard
                     </button>
                     <button
+                      className="rounded-lg border border-cyan-500/60 bg-cyan-500/15 px-4 py-2 text-cyan-200 font-medium hover:bg-cyan-500/25 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                      onClick={() => void handleRunManualProcessing(false)}
+                      disabled={!canManageOwnerFlows || isRunningManualProcessing}
+                    >
+                      {isRunningManualProcessing ? 'Processing...' : 'Run Processing Now'}
+                    </button>
+                    <button
                       className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-4 py-2 text-blue-300 hover:bg-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                       onClick={() => setShowAdvancedActions((prev) => !prev)}
                       disabled={!canManageOwnerFlows}
@@ -2973,6 +3043,13 @@ export default function OwnerConsole() {
                   disabled={!canManageOwnerFlows}
                 >
                   Create Platform Fee Intent
+                </button>
+                <button
+                  className="rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                  onClick={() => void handleRunManualProcessing(true)}
+                  disabled={!canManageOwnerFlows || isRunningManualProcessing}
+                >
+                  {isRunningManualProcessing ? 'Processing...' : 'Run + Indexer Sync'}
                 </button>
               </div>
             </div>
@@ -3012,6 +3089,18 @@ export default function OwnerConsole() {
               }`}
             >
               {errorMessage || statusMessage}
+            </div>
+          )}
+
+          {lastManualProcessingRun && (
+            <div className="mb-6 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-cyan-100 backdrop-blur">
+              <div className="text-sm font-semibold">
+                Last processing run: {lastManualProcessingRun.steps.filter((step) => step.status === 'failed').length === 0 ? 'Successful' : 'Completed with errors'}
+              </div>
+              <div className="mt-1 text-xs text-cyan-200/90">
+                Mode: {lastManualProcessingRun.processingMode} | Duration: {(lastManualProcessingRun.durationMs / 1000).toFixed(1)}s | Steps:{' '}
+                {lastManualProcessingRun.steps.map((step) => `${step.label}:${step.status}`).join(', ')}
+              </div>
             </div>
           )}
 
@@ -4663,6 +4752,43 @@ export default function OwnerConsole() {
                       )}
                     </div>
                   )}
+
+                  <div className="mt-8 rounded-2xl border border-white/10 bg-slate-900/50 p-6 shadow-xl shadow-black/25 backdrop-blur">
+                    <h2 className="mb-4 text-xl font-bold text-white">Last Processing Run</h2>
+                    {!lastObservedProcessingRun ? (
+                      <p className="text-sm text-slate-400">No processing run has been recorded yet.</p>
+                    ) : (
+                      <div className="space-y-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2 text-slate-300">
+                          <span className="rounded border border-slate-700/60 bg-slate-800/40 px-2 py-0.5 text-xs uppercase tracking-wide text-slate-300">
+                            {lastObservedProcessingRun.triggerSource}
+                          </span>
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs font-medium ${
+                              lastObservedProcessingRun.status === 'ok'
+                                ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                : 'border border-red-500/30 bg-red-500/10 text-red-300'
+                            }`}
+                          >
+                            {lastObservedProcessingRun.status}
+                          </span>
+                          <span className="text-slate-400">
+                            {new Date(lastObservedProcessingRun.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-slate-300">
+                          Mode: {lastObservedProcessingRun.processingMode} | Duration:{' '}
+                          {(lastObservedProcessingRun.durationMs / 1000).toFixed(1)}s
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Steps:{' '}
+                          {lastObservedProcessingRun.steps
+                            ?.map((step) => `${step.label}:${step.status}`)
+                            .join(', ') || 'none'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </>

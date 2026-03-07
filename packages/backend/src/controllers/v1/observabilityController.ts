@@ -7,6 +7,7 @@ import { sendError } from '../../lib/apiError.js';
 
 export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response) => {
   try {
+    const noWorkerModeEnabled = process.env.NO_WORKER_MODE === 'true';
     const memory = process.memoryUsage();
     const metrics = getRequestMetricsSnapshot();
     const rpcUrlConfigured = Boolean(
@@ -209,7 +210,7 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
         checks: {
           rpcConfigured: rpcUrlConfigured,
           indexerHealthy: stateRows.length > 0,
-          workersHealthy: staleSubmittedIntents === 0,
+          workersHealthy: noWorkerModeEnabled ? true : staleSubmittedIntents === 0,
         },
         staleSubmittedIntents,
       },

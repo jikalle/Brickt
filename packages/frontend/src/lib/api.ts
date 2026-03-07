@@ -544,6 +544,38 @@ export interface IntentActionResponse {
   };
 }
 
+export interface AdminProcessingStepResult {
+  key: 'propertyIntents' | 'campaignLifecycle' | 'platformFeeIntents' | 'profitIntents' | 'indexerSync';
+  label: string;
+  status: 'ok' | 'failed';
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+}
+
+export interface AdminProcessingRunResponse {
+  processingMode: 'manual_no_worker' | 'hybrid';
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  steps: AdminProcessingStepResult[];
+}
+
+export interface AdminLastProcessingRunResponse {
+  run: {
+    id: string;
+    triggerSource: 'manual' | 'cron';
+    processingMode: 'manual_no_worker' | 'hybrid';
+    status: 'ok' | 'failed';
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    createdAt: string;
+    steps: AdminProcessingStepResult[];
+  } | null;
+}
+
 export interface CloudinaryUploadSignatureResponse {
   cloudName: string;
   apiKey: string;
@@ -790,6 +822,53 @@ export async function resetAdminIntent(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Failed to reset intent' }));
     throw new Error(error.error || 'Failed to reset intent');
+  }
+  return response.json();
+}
+
+export async function runAdminProcessingNow(
+  token: string,
+  payload?: {
+    propertyIntents?: boolean;
+    campaignLifecycle?: boolean;
+    platformFeeIntents?: boolean;
+    profitIntents?: boolean;
+    indexerSync?: boolean;
+  }
+): Promise<AdminProcessingRunResponse> {
+  const response = await fetch(`${API_V1_BASE}/admin/processing/run`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      propertyIntents: payload?.propertyIntents ?? true,
+      campaignLifecycle: payload?.campaignLifecycle ?? true,
+      platformFeeIntents: payload?.platformFeeIntents ?? true,
+      profitIntents: payload?.profitIntents ?? true,
+      indexerSync: payload?.indexerSync ?? true,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to run processing cycle' }));
+    throw new Error(error.error || 'Failed to run processing cycle');
+  }
+  return response.json();
+}
+
+export async function fetchAdminLastProcessingRun(
+  token: string
+): Promise<AdminLastProcessingRunResponse> {
+  const response = await fetch(`${API_V1_BASE}/admin/processing/last`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to fetch last processing run' }));
+    throw new Error(error.error || 'Failed to fetch last processing run');
   }
   return response.json();
 }

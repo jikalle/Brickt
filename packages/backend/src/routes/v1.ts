@@ -40,6 +40,9 @@ import {
   listPlatformFeeIntents,
   listProfitDistributionIntents,
   listPropertyIntents,
+  getLastProcessingRun,
+  runCronProcessing,
+  runAdminProcessingNow,
   resetAdminIntent,
   retryAdminIntent,
   withdrawCampaignFunds,
@@ -52,6 +55,7 @@ const router: ExpressRouter = Router();
 router.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
+router.post('/admin/processing/cron', runCronProcessing);
 
 router.get('/properties', listProperties);
 router.get('/properties/:propertyId', getProperty);
@@ -93,6 +97,8 @@ router.get('/admin/campaigns/preflight', auth, requireRole('owner'), getCampaign
 router.post('/admin/campaigns/finalize', auth, requireRole('owner'), finalizeCampaign);
 router.post('/admin/campaigns/withdraw', auth, requireRole('owner'), withdrawCampaignFunds);
 router.post('/admin/campaigns/repair-setup', auth, requireRole('owner'), repairCampaignSetup);
+router.post('/admin/processing/run', auth, requireRole('owner'), runAdminProcessingNow);
+router.get('/admin/processing/last', auth, requireRole('owner'), getLastProcessingRun);
 router.get('/admin/metrics', auth, requireRole('owner'), getAdminMetrics);
 
 export default router;
