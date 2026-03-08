@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchCampaigns, fetchProperties, PropertyResponse, CampaignResponse } from '../lib/api';
 
@@ -54,12 +54,14 @@ const getPropertyFundingPhase = (
   campaign: CampaignResponse | undefined,
   nowMs: number
 ): PropertyFundingPhase => {
-  if (!campaign) return 'UNKNOWN';
+  if (!campaign) return 'NOT_STARTED';
   if (campaign.state === 'FAILED') return 'FAILED';
   if (campaign.state === 'SUCCESS') return 'FUNDED';
   if (campaign.state === 'WITHDRAWN') return 'ENDED';
   const startMs = campaign.startTime ? Date.parse(campaign.startTime) : Number.NaN;
+  const endMs = campaign.endTime ? Date.parse(campaign.endTime) : Number.NaN;
   if (!Number.isNaN(startMs) && startMs > nowMs) return 'NOT_STARTED';
+  if (!Number.isNaN(endMs) && endMs <= nowMs) return 'ENDED';
   return campaign.state === 'ACTIVE' ? 'ACTIVE' : 'UNKNOWN';
 };
 
@@ -70,8 +72,8 @@ export default function Properties() {
   const [errorMessage, setErrorMessage] = useState('');
   const [nowMs, setNowMs] = useState(Date.now());
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedBestFor, setSelectedBestFor] = useState('all');
 
   useEffect(() => {
     let isMounted = true;
@@ -120,10 +122,47 @@ export default function Properties() {
   const filteredProperties = properties.filter((property) => {
     const campaign = campaignByPropertyId[property.propertyId];
     const phase = getPropertyFundingPhase(campaign, nowMs);
-    const matchesSearch = property.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      query.length === 0 ||
+      property.name.toLowerCase().includes(query) ||
+      property.propertyId.toLowerCase().includes(query) ||
+      property.location.toLowerCase().includes(query) ||
+      property.description.toLowerCase().includes(query);
     const matchesStatus = selectedStatus === 'all' || phase.toLowerCase() === selectedStatus.toLowerCase();
-    return matchesSearch && matchesStatus;
+    const matchesBestFor = selectedBestFor === 'all' || property.bestFor === selectedBestFor;
+    return matchesSearch && matchesStatus && matchesBestFor;
   });
+
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: 0,
+      not_started: 0,
+      active: 0,
+      funded: 0,
+      failed: 0,
+      ended: 0,
+    };
+    for (const property of properties) {
+      const query = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        query.length === 0 ||
+        property.name.toLowerCase().includes(query) ||
+        property.propertyId.toLowerCase().includes(query) ||
+        property.location.toLowerCase().includes(query) ||
+        property.description.toLowerCase().includes(query);
+      const matchesBestFor = selectedBestFor === 'all' || property.bestFor === selectedBestFor;
+      if (!matchesSearch || !matchesBestFor) continue;
+      const phase = getPropertyFundingPhase(campaignByPropertyId[property.propertyId], nowMs).toLowerCase();
+      counts.all += 1;
+      if (phase === 'not_started') counts.not_started += 1;
+      else if (phase === 'active') counts.active += 1;
+      else if (phase === 'funded') counts.funded += 1;
+      else if (phase === 'failed') counts.failed += 1;
+      else if (phase === 'ended') counts.ended += 1;
+    }
+    return counts;
+  }, [properties, campaignByPropertyId, nowMs, searchQuery, selectedBestFor]);
 
   return (
     <div className="overflow-hidden min-h-screen">
@@ -143,29 +182,31 @@ export default function Properties() {
 
           {/* Filters */}
           <div className="mb-12 rounded-2xl bg-slate-900/80 backdrop-blur border border-slate-700/50 p-6">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {/* Network Filter */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {/* Best For Filter */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold tracking-widest text-slate-400 uppercase">Network</label>
-                <select 
-                  value={selectedNetwork}
-                  onChange={(e) => setSelectedNetwork(e.target.value)}
+                <label className="text-xs font-semibold tracking-widest text-slate-400 uppercase">Best For</label>
+                <select
+                  value={selectedBestFor}
+                  onChange={(e) => setSelectedBestFor(e.target.value)}
                   className="w-full rounded-lg bg-slate-800/50 border border-slate-700 text-white px-4 py-3 focus:outline-none focus:border-emerald-500/50 transition"
                 >
-                  <option value="all">All Networks</option>
-                  <option value="sepolia">Base Sepolia</option>
-                  <option value="mainnet">Base Mainnet</option>
+                  <option value="all">All Strategies</option>
+                  <option value="sell">Best for: Sell</option>
+                  <option value="rent">Best for: Rent</option>
+                  <option value="build_and_sell">Best for: Build and Sell</option>
+                  <option value="build_and_rent">Best for: Build and Rent</option>
                 </select>
               </div>
 
               {/* Search */}
-              <div className="space-y-2 md:col-span-2 lg:col-span-1">
+              <div className="space-y-2">
                 <label className="text-xs font-semibold tracking-widest text-slate-400 uppercase">Search</label>
                 <div className="relative">
                   <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                   <input
                     type="text"
-                    placeholder="Search properties..."
+                    placeholder="Search name, ID, location..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full rounded-lg bg-slate-800/50 border border-slate-700 text-white px-4 py-3 pl-10 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 transition"
@@ -190,6 +231,35 @@ export default function Properties() {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Status Counts */}
+          <div className="mb-8 flex flex-wrap items-center gap-2">
+            {[
+              { key: 'all', label: 'All', value: statusCounts.all },
+              { key: 'not_started', label: 'Upcoming', value: statusCounts.not_started },
+              { key: 'active', label: 'Live', value: statusCounts.active },
+              { key: 'funded', label: 'Funded', value: statusCounts.funded },
+              { key: 'failed', label: 'Failed', value: statusCounts.failed },
+              { key: 'ended', label: 'Closed', value: statusCounts.ended },
+            ].map((item) => {
+              const active = selectedStatus === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setSelectedStatus(item.key)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
+                    active
+                      ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200'
+                      : 'border-slate-600/70 bg-slate-900/60 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <span className="rounded-full bg-black/30 px-2 py-0.5 text-[11px]">{item.value}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Error State */}
@@ -276,7 +346,7 @@ export default function Properties() {
                       {/* Status Badge */}
                       {campaign && (
                         <div className="absolute top-3 left-3">
-                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500 border border-blue-500/30 text-gray-300">
+                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
                             {fundingPhase}
                           </div>
                         </div>
