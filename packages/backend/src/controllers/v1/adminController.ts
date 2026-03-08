@@ -613,6 +613,25 @@ const getConfiguredRpcUrl = (): string => {
   return rpcUrl;
 };
 
+const getIndexerLastBlockSafe = async (chainId: number): Promise<number> => {
+  try {
+    const stateRows = await sequelize.query<{ last_block: string }>(
+      'SELECT last_block::text AS last_block FROM indexer_state WHERE chain_id = :chainId LIMIT 1',
+      {
+        type: QueryTypes.SELECT,
+        replacements: { chainId },
+      }
+    );
+    return stateRows[0] ? Number(stateRows[0].last_block) : 0;
+  } catch (error) {
+    const code = (error as { original?: { code?: string } })?.original?.code;
+    if (code === '42P01') {
+      return 0;
+    }
+    throw error;
+  }
+};
+
 const resolveCampaignAddressForProperty = async (
   chainId: number,
   propertyId: string
@@ -1701,14 +1720,7 @@ export const getProfitPreflight = async (req: AuthenticatedRequest, res: Respons
     const ownerMatchesOperator =
       operatorAddress !== null && normalizedDistributorOwner === operatorAddress;
 
-    const stateRows = await sequelize.query<{ last_block: string }>(
-      'SELECT last_block::text AS last_block FROM indexer_state WHERE chain_id = :chainId LIMIT 1',
-      {
-        type: QueryTypes.SELECT,
-        replacements: { chainId: BASE_SEPOLIA_CHAIN_ID },
-      }
-    );
-    const indexerLastBlock = stateRows[0] ? Number(stateRows[0].last_block) : 0;
+    const indexerLastBlock = await getIndexerLastBlockSafe(BASE_SEPOLIA_CHAIN_ID);
 
     const staleMinutes = 5;
     const staleRows = await sequelize.query<{ count: string }>(
@@ -2057,14 +2069,7 @@ export const getPlatformFeePreflight = async (req: AuthenticatedRequest, res: Re
       currentFeeBps === requestedFeeBps &&
       currentRecipient.toLowerCase() === requestedRecipient.toLowerCase();
 
-    const stateRows = await sequelize.query<{ last_block: string }>(
-      'SELECT last_block::text AS last_block FROM indexer_state WHERE chain_id = :chainId LIMIT 1',
-      {
-        type: QueryTypes.SELECT,
-        replacements: { chainId: BASE_SEPOLIA_CHAIN_ID },
-      }
-    );
-    const indexerLastBlock = stateRows[0] ? Number(stateRows[0].last_block) : 0;
+    const indexerLastBlock = await getIndexerLastBlockSafe(BASE_SEPOLIA_CHAIN_ID);
 
     const staleMinutes = 5;
     const staleRows = await sequelize.query<{ count: string }>(
@@ -2386,14 +2391,7 @@ export const getCampaignLifecyclePreflight = async (req: AuthenticatedRequest, r
     if (state !== 'SUCCESS') withdrawReasons.push(`campaign-state-${state.toLowerCase()}`);
     if (campaignUsdcBalance <= 0n) withdrawReasons.push('campaign-usdc-balance-zero');
 
-    const stateRows = await sequelize.query<{ last_block: string }>(
-      'SELECT last_block::text AS last_block FROM indexer_state WHERE chain_id = :chainId LIMIT 1',
-      {
-        type: QueryTypes.SELECT,
-        replacements: { chainId: BASE_SEPOLIA_CHAIN_ID },
-      }
-    );
-    const indexerLastBlock = stateRows[0] ? Number(stateRows[0].last_block) : 0;
+    const indexerLastBlock = await getIndexerLastBlockSafe(BASE_SEPOLIA_CHAIN_ID);
 
     const staleMinutes = 5;
     const staleRows = await sequelize.query<{ count: string }>(

@@ -13,14 +13,24 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
     const rpcUrlConfigured = Boolean(
       process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC_URL
     );
-    const stateRows = await sequelize.query<{ chain_id: string; last_block: string }>(
-      `
-      SELECT chain_id::text AS chain_id, last_block::text AS last_block
-      FROM indexer_state
-      ORDER BY chain_id ASC
-      `,
-      { type: QueryTypes.SELECT }
-    );
+    let stateRows: Array<{ chain_id: string; last_block: string }> = [];
+    try {
+      stateRows = await sequelize.query<{ chain_id: string; last_block: string }>(
+        `
+        SELECT chain_id::text AS chain_id, last_block::text AS last_block
+        FROM indexer_state
+        ORDER BY chain_id ASC
+        `,
+        { type: QueryTypes.SELECT }
+      );
+    } catch (error) {
+      const code = (error as { original?: { code?: string } })?.original?.code;
+      if (code !== '42P01') {
+        throw error;
+      }
+      // indexer_state might not exist yet on fresh deployments before first indexer run.
+      stateRows = [];
+    }
     const staleMinutes = 5;
     const staleRows = await sequelize.query<{ count: string }>(
       `
