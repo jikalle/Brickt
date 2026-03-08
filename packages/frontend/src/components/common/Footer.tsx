@@ -29,10 +29,10 @@ export default function Footer() {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-emerald-400 flex items-center justify-center">
-                  <span className="text-slate-900 font-bold text-lg">H</span>
+                  <span className="text-slate-900 font-bold text-lg">B</span>
                 </div>
                 <h3 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-                  Homeshare
+                  Brickt
                 </h3>
               </div>
               <p className="text-slate-400 text-sm leading-relaxed">
@@ -141,7 +141,7 @@ export default function Footer() {
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
               <p className="text-xs text-slate-500 font-medium">
-                &copy; {currentYear} Homeshare. All rights reserved.
+                &copy; {currentYear} Brickt. All rights reserved.
               </p>
             </div>
             <div className="flex items-center justify-end gap-6">

@@ -17,7 +17,7 @@ export const wagmiConfig = createConfig({
     new CoinbaseWalletConnector({
       chains,
       options: {
-        appName: 'Homeshare',
+        appName: 'Brickt',
       },
     }),
     new InjectedConnector({

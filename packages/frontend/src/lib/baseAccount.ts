@@ -19,7 +19,7 @@ type Eip1193Provider = {
 };
 
 const sdk = createBaseAccountSDK({
-  appName: 'Homeshare',
+  appName: 'Brickt',
   appChainIds: [84532, 8453],
 });
 
@@ -37,7 +37,7 @@ const toHexUtf8 = (value: string): `0x${string}` => {
 
 const buildFallbackMessage = (address: string, nonce: string, chainId: number): string =>
   [
-    'Homeshare wants you to sign in with your wallet.',
+    'Brickt wants you to sign in with your wallet.',
     `Address: ${address}`,
     `Chain ID: ${chainId}`,
     `Nonce: ${nonce}`,

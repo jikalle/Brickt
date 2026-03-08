@@ -63,7 +63,7 @@ const toHexUtf8 = (value: string): `0x${string}` => {
 
 const buildInvestorMessage = (address: string, nonce: string, chainId: number): string =>
   [
-    'Homeshare wants you to sign in with your wallet.',
+    'Brickt wants you to sign in with your wallet.',
     `Address: ${address}`,
     `Chain ID: ${chainId}`,
     `Nonce: ${nonce}`,

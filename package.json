@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Multi-Chain Real Estate Crowdfunding Platform",
   "private": true,
-  "author": "Homeshare Team",
+  "author": "Brickt Team",
   "license": "MIT",
   "workspaces": [
     "packages/*"

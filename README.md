@@ -1,8 +1,8 @@
-# Homeshare v2 🏠
+# Brickt 🏠
 
 > Base-Native Real Estate Crowdfunding Platform
 
-Homeshare v2 is a decentralized real estate crowdfunding platform focused on Base. Investors fund properties with USDC, receive tokenized equity, and claim onchain profit distributions.
+Brickt is a decentralized real estate crowdfunding platform focused on Base. Investors fund properties with USDC, receive tokenized equity, and claim onchain profit distributions.
 
 ## 🌐 Supported Networks
 

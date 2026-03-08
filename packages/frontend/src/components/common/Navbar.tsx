@@ -246,8 +246,13 @@ export default function Navbar() {
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent hover:opacity-80 transition">
-              Homeshare
+            <Link to="/" className="inline-flex items-center gap-2 hover:opacity-80 transition">
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                Brickt
+              </span>
+              <span className="rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-amber-300">
+                TESTNET
+              </span>
             </Link>
 
             {/* Navigation Links (Desktop) */}
