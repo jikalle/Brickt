@@ -1117,11 +1117,22 @@ export default function PropertyDetail() {
       await investTx.wait()
 
       setTxStatus(`Investment confirmed: ${investTx.hash}`)
+      setCampaign((previous) => {
+        if (!previous) return previous
+        const currentRaised = BigInt(previous.raisedUsdcBaseUnits || '0')
+        return {
+          ...previous,
+          raisedUsdcBaseUnits: (currentRaised + amountBaseUnits).toString(),
+        }
+      })
       emitPortfolioActivity({
         txHash: investTx.hash,
         propertyId: property.propertyId,
         type: 'invest',
       })
+      void fetchCampaign(property.crowdfundAddress)
+        .then((liveCampaign) => setCampaign(liveCampaign))
+        .catch(() => undefined)
       setAmountUsdc('')
     } catch (error) {
       setTxError(error instanceof Error ? error.message : 'Investment transaction failed')
@@ -1356,11 +1367,22 @@ export default function PropertyDetail() {
       await investTx.wait()
 
       setTxStatus(`ETH swap + investment confirmed: ${investTx.hash}`)
+      setCampaign((previous) => {
+        if (!previous) return previous
+        const currentRaised = BigInt(previous.raisedUsdcBaseUnits || '0')
+        return {
+          ...previous,
+          raisedUsdcBaseUnits: (currentRaised + receivedUsdc).toString(),
+        }
+      })
       emitPortfolioActivity({
         txHash: investTx.hash,
         propertyId: property.propertyId,
         type: 'invest',
       })
+      void fetchCampaign(property.crowdfundAddress)
+        .then((liveCampaign) => setCampaign(liveCampaign))
+        .catch(() => undefined)
 
       setAmountEth('')
       setEthQuote(null)

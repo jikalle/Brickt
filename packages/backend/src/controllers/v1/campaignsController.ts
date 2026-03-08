@@ -75,7 +75,24 @@ export const listCampaigns = async (req: Request, res: Response) => {
         c.end_time AS "endTime",
         c.state AS "state",
         c.target_usdc_base_units::text AS "targetUsdcBaseUnits",
-        c.raised_usdc_base_units::text AS "raisedUsdcBaseUnits",
+        (
+          CASE
+            WHEN EXISTS (SELECT 1 FROM campaign_investments ci0 WHERE ci0.campaign_id = c.id)
+              OR EXISTS (SELECT 1 FROM campaign_refunds cr0 WHERE cr0.campaign_id = c.id)
+            THEN (
+              COALESCE(
+                (SELECT SUM(ci.usdc_amount_base_units) FROM campaign_investments ci WHERE ci.campaign_id = c.id),
+                0
+              )
+              -
+              COALESCE(
+                (SELECT SUM(cr.usdc_amount_base_units) FROM campaign_refunds cr WHERE cr.campaign_id = c.id),
+                0
+              )
+            )
+            ELSE c.raised_usdc_base_units
+          END
+        )::text AS "raisedUsdcBaseUnits",
         c.finalized_tx_hash AS "finalizedTxHash",
         c.finalized_log_index AS "finalizedLogIndex",
         c.finalized_block_number::text AS "finalizedBlockNumber",
@@ -137,7 +154,24 @@ export const getCampaign = async (req: Request, res: Response) => {
         c.end_time AS "endTime",
         c.state AS "state",
         c.target_usdc_base_units::text AS "targetUsdcBaseUnits",
-        c.raised_usdc_base_units::text AS "raisedUsdcBaseUnits",
+        (
+          CASE
+            WHEN EXISTS (SELECT 1 FROM campaign_investments ci0 WHERE ci0.campaign_id = c.id)
+              OR EXISTS (SELECT 1 FROM campaign_refunds cr0 WHERE cr0.campaign_id = c.id)
+            THEN (
+              COALESCE(
+                (SELECT SUM(ci.usdc_amount_base_units) FROM campaign_investments ci WHERE ci.campaign_id = c.id),
+                0
+              )
+              -
+              COALESCE(
+                (SELECT SUM(cr.usdc_amount_base_units) FROM campaign_refunds cr WHERE cr.campaign_id = c.id),
+                0
+              )
+            )
+            ELSE c.raised_usdc_base_units
+          END
+        )::text AS "raisedUsdcBaseUnits",
         c.finalized_tx_hash AS "finalizedTxHash",
         c.finalized_log_index AS "finalizedLogIndex",
         c.finalized_block_number::text AS "finalizedBlockNumber",
