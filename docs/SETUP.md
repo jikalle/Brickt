@@ -1,263 +1,141 @@
 # Development Setup Guide
 
-## Prerequisites
+## 1) Prerequisites
 
-Before you begin, ensure you have the following installed:
+- Node.js 18+
+- pnpm 8+
+- PostgreSQL 14+
+- Git
+- Browser wallet (MetaMask, Coinbase Wallet, or compatible Base wallet)
 
-- **Node.js** 18+ ([Download](https://nodejs.org/))
-- **pnpm** 8+ (`npm install -g pnpm`)
-- **PostgreSQL** 14+ ([Download](https://www.postgresql.org/download/))
-- **Git** ([Download](https://git-scm.com/downloads))
-
-Optional:
-- **MetaMask** or another Web3 wallet for testing
-- **Docker** for containerized PostgreSQL
-
-## Initial Setup
-
-### 1. Clone the Repository
+## 2) Clone and Install
 
 ```bash
-git clone https://github.com/Shehuna2/homeshare-v2.git
-cd homeshare-v2
-```
-
-### 2. Install Dependencies
-
-```bash
+git clone <your-repo-url>
+cd <your-repo-dir>
 pnpm install
 ```
 
-This will install dependencies for all packages in the monorepo.
+## 3) Environment Files
 
-### 3. Setup Environment Variables
-
-You can bootstrap the environment files from the repo root:
+### Frontend
 
 ```bash
-./scripts/phase1-setup.sh
+cp packages/frontend/.env.example packages/frontend/.env.local
 ```
 
-#### Frontend
+Set at least:
 
-```bash
-cd packages/frontend
-cp .env.example .env.local
-```
-
-Edit `.env.local`:
 ```env
-VITE_APP_NAME=Homeshare
+VITE_APP_NAME=Brickt
 VITE_API_BASE_URL=http://localhost:3000
-VITE_DEFAULT_CHAIN=base-sepolia
-VITE_SUPPORTED_CHAINS=base-sepolia,base
+VITE_OWNER_ALLOWLIST=0x...
 ```
 
-#### Backend
+### Backend
 
 ```bash
-cd ../backend
-cp .env.example .env
+cp packages/backend/.env.example packages/backend/.env
 ```
 
-Edit `.env` and configure (the server logs warnings for missing or placeholder values on boot):
-- Database connection string
-- Base RPC URLs (`BASE_SEPOLIA_RPC_URL`, optional `BASE_MAINNET_RPC_URL`)
-- JWT secret
-- `OWNER_ALLOWLIST` for owner auth elevation (comma-separated addresses)
-- `PLATFORM_OPERATOR_PRIVATE_KEY` for platform-fee intent execution worker
-- `PLATFORM_FEE_INTENT_MAX_ATTEMPTS` to cap automatic retries (default `3`)
-- Rate limiting controls (`RATE_LIMIT_*`, `AUTH_RATE_LIMIT_*`)
+Set at least:
 
-#### Contracts
+```env
+PORT=3000
+DATABASE_URL=postgresql://brickt:brickt@localhost:5432/brickt
+JWT_SECRET=change-me
 
-```bash
-cd ../contracts
-cp .env.example .env
+BASE_SEPOLIA_RPC_URL=https://base-sepolia-rpc.publicnode.com
+BASE_SEPOLIA_RPC_FALLBACK_URLS=https://base-sepolia.blockpi.network/v1/rpc/public
+
+OWNER_ALLOWLIST=0x...
+NO_WORKER_MODE=true
+PROCESSING_CRON_TOKEN=change-me
+
+# One of these must be present for processing
+PRIVATE_KEY=0x...
+PROPERTY_OPERATOR_PRIVATE_KEY=0x...
+PLATFORM_OPERATOR_PRIVATE_KEY=0x...
+PROFIT_OPERATOR_PRIVATE_KEY=0x...
 ```
 
-Edit `.env`:
-- Add RPC URLs for networks
-- Add private key for deployment (NEVER commit this!)
-- Add API keys for contract verification
-
-After deploying to testnets, sync the new contract addresses into frontend/backend env files:
+### Contracts
 
 ```bash
-pnpm sync:testnet-addresses
+cp packages/contracts/.env.example packages/contracts/.env
 ```
 
-### 4. Setup Database
+## 4) Database
 
-#### Using PostgreSQL directly
+Create local DB and run migrations:
 
 ```bash
-# Create database
-createdb homeshare
-
-# Update DATABASE_URL in backend/.env
-DATABASE_URL=postgresql://username:password@localhost:5432/homeshare
+createdb brickt
+pnpm --filter @homeshare/backend migrate
 ```
 
-#### Using Docker
+## 5) Compile Contracts (Required)
+
+Property intent processing expects artifacts under `packages/contracts/artifacts`.
 
 ```bash
-docker run --name homeshare-postgres \
-  -e POSTGRES_DB=homeshare \
-  -e POSTGRES_USER=homeshare \
-  -e POSTGRES_PASSWORD=homeshare \
-  -p 5432:5432 \
-  -d postgres:14
+pnpm --filter @homeshare/contracts compile
 ```
 
-## Development Workflow
+## 6) Run Locally
 
-### Running All Services
-
-From the root directory:
+Start frontend and backend:
 
 ```bash
-# Start all services in development mode
 pnpm dev
 ```
 
-This will start:
-- Frontend on `http://localhost:5173`
-- Backend on `http://localhost:3000`
+Services:
 
-### Running Individual Services
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000`
 
-#### Frontend Only
+## 7) Run One Processing Cycle (No-Worker Mode)
 
-```bash
-cd packages/frontend
-pnpm dev
-```
-
-#### Backend Only
+Manual local trigger:
 
 ```bash
-cd packages/backend
-pnpm dev
+curl -X POST "http://localhost:3000/v1/admin/processing/cron?indexerSync=false" \
+  -H "x-cron-token: $PROCESSING_CRON_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-#### Contracts
+## 8) Useful Commands
 
 ```bash
-cd packages/contracts
-
-# Compile contracts
-pnpm compile
-
-# Run tests
-pnpm test
-
-# Deploy to local network
-npx hardhat node
-# In another terminal
-npx hardhat run deploy/deployEthereum.ts --network localhost
+pnpm --filter @homeshare/backend build
+pnpm --filter @homeshare/frontend build
+pnpm --filter @homeshare/contracts compile
+pnpm --filter @homeshare/backend process:properties
+pnpm --filter @homeshare/backend process:profits
+pnpm --filter @homeshare/backend process:platform-fees
+pnpm --filter @homeshare/backend process:campaign-lifecycle
+pnpm --filter @homeshare/backend indexer:sync
 ```
 
-## Testing
+## 9) Common Issues
 
-### Frontend Tests
+### `Invalid database connection URL format`
+
+Your `DATABASE_URL` is not loaded or malformed. Confirm `.env` and shell env are clean.
+
+### `ENOENT ... packages/contracts/artifacts/...json`
+
+Run:
 
 ```bash
-cd packages/frontend
-pnpm build
+pnpm --filter @homeshare/contracts compile
 ```
 
-### Backend Tests
+### `JsonRpcProvider failed to detect network`
 
-```bash
-cd packages/backend
-pnpm test
-```
-
-### Contract Tests
-
-```bash
-cd packages/contracts
-pnpm test
-```
-
-## Building for Production
-
-```bash
-# Build all packages
-pnpm build
-```
-
-Individual packages:
-
-```bash
-# Frontend
-cd packages/frontend
-pnpm build
-
-# Backend
-cd packages/backend
-pnpm build
-
-# Contracts
-cd packages/contracts
-pnpm compile
-```
-
-## Common Issues
-
-### Port Already in Use
-
-If port 3000 or 5173 is already in use:
-
-```bash
-# Frontend (change in vite.config.ts or use env var)
-VITE_PORT=5174 pnpm dev
-
-# Backend (change PORT in .env)
-PORT=3001 pnpm dev
-```
-
-### Database Connection Issues
-
-1. Ensure PostgreSQL is running
-2. Verify `DATABASE_URL` in `packages/backend/.env`
-3. Check database exists: `psql -l`
-
-### Contract Compilation Errors
-
-1. Ensure you're using the correct Solidity version (0.8.20)
-2. Clear cache: `npx hardhat clean`
-3. Reinstall dependencies: `pnpm install`
-
-### Web3 Connection Issues
-
-1. Ensure MetaMask is installed and connected
-2. Check you're on the correct network
-3. Verify RPC URLs in configuration
-
-## Development Tips
-
-### Hot Reload
-
-All packages support hot reload:
-- Frontend: Vite provides instant HMR
-- Backend: tsx watch restarts on file changes
-- Contracts: Re-compile and re-deploy as needed
-
-### Code Formatting
-
-```bash
-# Lint all packages
-pnpm lint
-```
-
-### Database Migrations
-
-```bash
-cd packages/backend
-pnpm migrate
-```
+RPC endpoint is unstable/unreachable. Switch to a healthy Base Sepolia RPC.
 
 ### Debugging
 

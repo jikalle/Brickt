@@ -2,7 +2,7 @@
 
 ## Overview
 
-Homeshare v2 uses three main smart contracts to enable multi-chain real estate crowdfunding:
+Brickt uses three main smart contracts to enable Base-focused real estate crowdfunding:
 
 1. **PropertyToken**: ERC20 token representing fractional property ownership
 2. **PropertyCrowdfund**: Manages crowdfunding campaigns with multi-token support

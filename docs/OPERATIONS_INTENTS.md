@@ -1,12 +1,17 @@
 # Intent Operations Runbook
 
-This runbook covers operator workflows for admin intent execution and recovery.
+This runbook covers intent execution and recovery for the current Brickt production model.
 
-## Prerequisites
+## Runtime Model
 
-- Backend build artifacts available (`pnpm --filter @homeshare/backend build`)
-- Backend env configured (`DATABASE_URL`, RPC URL, operator key where required)
-- Migrations applied (`pnpm --filter @homeshare/backend migrate`)
+Primary mode:
+
+- `NO_WORKER_MODE=true`
+- Use `POST /v1/admin/processing/cron` for scheduled runs
+
+Fallback mode:
+
+- Continuous workers via `process:intents:watch` when needed
 
 ## Intent Tables
 
@@ -14,221 +19,117 @@ This runbook covers operator workflows for admin intent execution and recovery.
 - `profit_distribution_intents`
 - `platform_fee_intents`
 
-All three use lifecycle fields:
-- `status`: `pending` | `submitted` | `confirmed` | `failed`
+Shared lifecycle fields:
+
+- `status`: `pending | submitted | confirmed | failed`
 - `tx_hash`, `error_message`
-- `submitted_at`, `confirmed_at`, `updated_at`
 - `attempt_count`, `last_attempt_at`
 
-## Commands
+## Required Prerequisites
 
-Run from repo root.
+- Backend built (`pnpm --filter @homeshare/backend build`)
+- Contracts compiled (`pnpm --filter @homeshare/contracts compile`)
+- Migrations applied (`pnpm --filter @homeshare/backend migrate`)
+- Valid env (`DATABASE_URL`, RPC URL, operator key, `PROCESSING_CRON_TOKEN`)
 
-### 1) Execute platform fee intents
+## Processing Entry Points
 
-```bash
-pnpm --filter @homeshare/backend process:platform-fees
+### Admin-triggered run
+
+`POST /v1/admin/processing/run` (owner-authenticated)
+
+### Cron-triggered run
+
+`POST /v1/admin/processing/cron` with header:
+
+```http
+x-cron-token: <PROCESSING_CRON_TOKEN>
 ```
 
-This picks retry-eligible intents from `platform_fee_intents` and attempts onchain execution.
+Query/body step toggles:
 
-Run as continuous worker:
+- `propertyIntents`
+- `campaignLifecycle`
+- `platformFeeIntents`
+- `profitIntents`
+- `indexerSync`
 
-```bash
-pnpm --filter @homeshare/backend process:platform-fees:watch
-```
+## Recommended Schedule
 
-### 1d) Execute profit distribution intents
+- Every 3 minutes: `indexerSync=false`
+- Every 15 minutes: `indexerSync=true`
 
-```bash
-pnpm --filter @homeshare/backend process:profits
-```
-
-This executes `deposit(uint256)` on each pending `profit_distribution_intents` target and transitions
-`pending/failed -> submitted -> confirmed`.
-
-Ownership model:
-- New property deployments set `ProfitDistributor.owner` to operator signer so this worker can execute deposits.
-- Legacy properties deployed before this change may have owner set to creator wallet; those intents will fail with an owner-mismatch error until migrated/redeployed or deposited manually by owner.
-
-Run as continuous worker:
-
-```bash
-pnpm --filter @homeshare/backend process:profits:watch
-```
-
-### 1b) Reconcile submitted platform fee intents
-
-```bash
-pnpm --filter @homeshare/backend reconcile:platform-fees
-```
-
-This checks submitted tx receipts and transitions intents to `confirmed` or `failed`.
-
-### 1f) Reconcile submitted property intents
-
-```bash
-pnpm --filter @homeshare/backend reconcile:properties
-```
-
-This checks submitted `property_intents` tx receipts and transitions intents to `confirmed` or `failed`.
-
-### 1g) Reconcile submitted profit intents
-
-```bash
-pnpm --filter @homeshare/backend reconcile:profits
-```
-
-This checks submitted `profit_distribution_intents` tx receipts and transitions intents to `confirmed` or `failed`.
-
-### 1h) Reconcile all submitted intents (recommended)
-
-```bash
-pnpm --filter @homeshare/backend reconcile:intents
-```
-
-This runs reconciliation for property, profit, and platform-fee intents in sequence.
-
-### 1c) Execute property intents
+## One-shot CLI Commands
 
 ```bash
 pnpm --filter @homeshare/backend process:properties
+pnpm --filter @homeshare/backend process:campaign-lifecycle
+pnpm --filter @homeshare/backend process:platform-fees
+pnpm --filter @homeshare/backend process:profits
+pnpm --filter @homeshare/backend process:indexer
 ```
 
-This deploys `PropertyCrowdfund`, `EquityToken`, and `ProfitDistributor` from each pending
-property intent using operator key material, then transitions `pending/failed -> submitted -> confirmed`.
+## Intent Inspection and Recovery
 
-Run as continuous worker:
-
-```bash
-pnpm --filter @homeshare/backend process:properties:watch
-```
-
-Run both property + profit workers with one command:
+List:
 
 ```bash
-pnpm --filter @homeshare/backend process:intents:watch
-```
-
-`process:intents:watch` now starts:
-- property worker
-- profit worker
-- platform-fee worker
-- indexer worker
-
-### 1e) Migrate legacy profit distributors to operator-owned model
-
-```bash
-pnpm --filter @homeshare/backend migrate:profit-distributors
-```
-
-Optional scope + dry run:
-
-```bash
-pnpm --filter @homeshare/backend migrate:profit-distributors -- <property_id> --dry-run
-```
-
-This script:
-- checks existing `properties.profit_distributor_address`
-- detects distributors not owned by operator
-- deploys new operator-owned `ProfitDistributor`
-- updates `properties.profit_distributor_address`
-- rewrites `pending/failed` `profit_distribution_intents` to the new distributor
-
-Required env for deployment:
-- `PROPERTY_OPERATOR_PRIVATE_KEY` (fallback: `PLATFORM_OPERATOR_PRIVATE_KEY`, then `PRIVATE_KEY`)
-- Chain RPC URL (`BASE_SEPOLIA_RPC_URL` or `BASE_MAINNET_RPC_URL`)
-- USDC token address for target chain (`BASE_SEPOLIA_USDC_ADDRESS` or `BASE_USDC_ADDRESS`)
-- Optional worker loop config:
-  - `PROPERTY_INTENT_CONTINUOUS=true`
-  - `PROPERTY_INTENT_POLL_INTERVAL_MS=15000`
-
-### 2) List intents
-
-```bash
-pnpm --filter @homeshare/backend intents:manage list platform_fee_intents
 pnpm --filter @homeshare/backend intents:manage list property_intents failed 50
+pnpm --filter @homeshare/backend intents:manage list profit_distribution_intents failed 50
+pnpm --filter @homeshare/backend intents:manage list platform_fee_intents failed 50
 ```
 
-### 3) Inspect an intent
+Inspect:
 
 ```bash
-pnpm --filter @homeshare/backend intents:manage inspect platform_fee_intents <intent_id>
+pnpm --filter @homeshare/backend intents:manage inspect property_intents <intent_id>
 ```
 
-### 4) Retry a failed intent
+Retry:
 
 ```bash
-pnpm --filter @homeshare/backend intents:manage retry platform_fee_intents <intent_id>
+pnpm --filter @homeshare/backend intents:manage retry property_intents <intent_id>
 ```
 
-Retry resets a failed intent back to `pending` and clears tx/error fields.
-
-### 4b) Attach deployed crowdfund address to a property intent (manual fallback)
+Reset:
 
 ```bash
-pnpm --filter @homeshare/backend intents:manage set-crowdfund <intent_id> <crowdfund_address>
+pnpm --filter @homeshare/backend intents:manage reset property_intents <intent_id>
 ```
 
-Use this if you deploy a crowdfund manually outside the worker. The command resets the intent to
-`pending` (unless already `confirmed`) so `process:properties` can execute it.
+## Frequent Failures and Fixes
 
-### 5) Alert check for failed/stale intents
+### `Property Intents: failed` quickly with `ENOENT ... artifacts/...json`
+
+Cause: contract artifacts missing in runtime image.
+Fix:
 
 ```bash
-pnpm --filter @homeshare/backend intents:alert
+pnpm --filter @homeshare/contracts compile
 ```
 
-Optional thresholds via env:
+On Render, include contract compile in build command.
 
-```env
-INTENT_FAILED_ALERT_THRESHOLD=5
-INTENT_SUBMITTED_STALE_MINUTES=30
-INTENT_SUBMITTED_STALE_THRESHOLD=5
-INDEXER_LAG_ALERT_THRESHOLD=200
-RPC_LATENCY_ALERT_THRESHOLD_MS=2000
-```
+### RPC connectivity errors / provider network detection failures
 
-The script exits with status `1` if any threshold is exceeded. It now checks:
-- failed/stale intent thresholds
-- RPC reachability + latency threshold
-- indexer lag threshold per chain
+- Switch `BASE_SEPOLIA_RPC_URL` to a healthy endpoint.
+- Optionally add `BASE_SEPOLIA_RPC_FALLBACK_URLS`.
 
-## Recommended Incident Workflow
+### `relation "indexer_state" does not exist`
 
-1. List failed intents by table.
-2. Inspect specific intent payload and last error.
-3. Fix root cause (RPC, key, address, contract state).
-4. For property intents, ensure deployment env/operator key is valid; if manually deployed, set address via `set-crowdfund`.
-4. Retry intent.
-5. Re-run processor/reconciler and verify `confirmed` status.
-
-## Scheduled Ops (Cron)
-
-Recommended cadence:
-- `intents:alert`: every 2 minutes
-- `reconcile:intents`: every 5 minutes
-
-Manual cron example:
+Run migrations:
 
 ```bash
-*/2 * * * * cd /root/codeful/baseapps/homeshare-v2 && flock -n /tmp/homeshare-intents-alert.lock pnpm --filter @homeshare/backend intents:alert >> /tmp/homeshare-ops/intents-alert.log 2>&1
-*/5 * * * * cd /root/codeful/baseapps/homeshare-v2 && flock -n /tmp/homeshare-intents-reconcile.lock pnpm --filter @homeshare/backend reconcile:intents >> /tmp/homeshare-ops/intents-reconcile.log 2>&1
+pnpm --filter @homeshare/backend migrate
 ```
 
-Install helper (idempotent):
+## Verification Endpoints
 
-```bash
-./scripts/install-ops-cron.sh --apply
-```
+- `GET /admin/processing/last`
+- `GET /admin/metrics`
 
-Preview without applying:
+Success criteria:
 
-```bash
-./scripts/install-ops-cron.sh
-```
-
-## Notes
-
-- `PLATFORM_FEE_INTENT_MAX_ATTEMPTS` caps automatic retries in the processor.
-- Manual retry via `intents:manage` is still allowed after remediation.
+- Latest run status is `ok`
+- Step statuses are `ok` for enabled steps
+- No growing backlog of failed intents

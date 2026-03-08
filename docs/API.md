@@ -65,7 +65,7 @@ Request body:
 {
   "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
   "signature": "0x...",
-  "message": "Homeshare wants you to sign in with your wallet.\nAddress: ...\nChain ID: 84532\nNonce: ...\nIssued At: 2026-02-28T10:00:00.000Z",
+  "message": "Brickt wants you to sign in with your wallet.\nAddress: ...\nChain ID: 84532\nNonce: ...\nIssued At: 2026-02-28T10:00:00.000Z",
   "role": "owner"
 }
 ```

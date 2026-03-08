@@ -1,6 +1,6 @@
 # MVP Go-Live Checklist
 
-Use this checklist as the final gate before opening Homeshare v2 to real users.
+Use this checklist as the final gate before opening Brickt to real users.
 
 ## 1) Scope Freeze (MVP)
 
@@ -20,9 +20,11 @@ Use this checklist as the final gate before opening Homeshare v2 to real users.
 - [ ] Backend `.env` is complete and loaded in runtime shell.
 - [ ] `BASE_SEPOLIA_RPC_URL` (or mainnet RPC when launching mainnet) is reachable.
 - [ ] Optional fallback RPC URLs are configured and tested.
-- [ ] Operator private keys are set (property/profit/platform fee/campaign lifecycle workers).
+- [ ] Operator private keys are set (property/profit/platform fee/campaign lifecycle).
 - [ ] JWT/auth secrets are set and rotated from defaults.
 - [ ] Cloudinary vars are configured if media upload is enabled.
+- [ ] `PROCESSING_CRON_TOKEN` is set.
+- [ ] `NO_WORKER_MODE` strategy is decided (`true` for scheduled no-worker mode).
 
 ## 3) Database & Migrations
 
@@ -35,10 +37,12 @@ pnpm --filter @homeshare/backend run migrate
 - [ ] Migration table confirms latest version applied.
 - [ ] No startup DB errors in backend logs.
 
-## 4) Worker & Indexer Reliability Gate
+## 4) Processing & Indexer Reliability Gate
 
-- [ ] Continuous workers run for 24-48h without crash loops.
-- [ ] No repeated `JsonRpcProvider failed to detect network` spam.
+- [ ] Chosen mode is stable:
+  - [ ] `manual_no_worker` scheduled runs execute without step failures
+  - [ ] or `hybrid` workers run without crash loops
+- [ ] No sustained RPC detection/connectivity failures.
 - [ ] Indexer advances consistently (no persistent lag growth).
 - [ ] No growing backlog of `submitted` intents.
 
@@ -59,7 +63,7 @@ Run one full staged flow on the launch network:
 
 - [ ] `GET /health` is green.
 - [ ] `admin/metrics` is available and reviewed.
-- [ ] Alerting for worker failure, indexer lag, intent failures is active.
+- [ ] Alerting for processing failures, indexer lag, intent failures is active.
 - [ ] Runbook commands are tested by operator once.
 
 ## 7) Security & Access
@@ -76,4 +80,3 @@ Run one full staged flow on the launch network:
 - [ ] Incident owner and communication channel assigned.
 
 Only launch when all boxes above are checked.
-

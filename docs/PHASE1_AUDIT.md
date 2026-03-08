@@ -1,8 +1,10 @@
 # Phase 1 Audit Report
 
+> Historical note: this document reflects early initialization-state findings and is preserved for record. For current architecture and operations, use `docs/SETUP.md`, `docs/DEPLOYMENT.md`, and `docs/OPERATIONS_INTENTS.md`.
+
 ## Scope
 
-This audit covers the current monorepo state for Homeshare v2, with emphasis on Phase 1 readiness (environment setup, service bootstrapping, and deployment prerequisites).
+This audit covers the early monorepo state for Brickt (initially named Homeshare v2), with emphasis on Phase 1 readiness (environment setup, service bootstrapping, and deployment prerequisites).
 
 ## Current Strengths
 

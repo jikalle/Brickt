@@ -1,8 +1,10 @@
-# Homeshare v2 - Project Initialization Summary
+# Brickt - Project Initialization Summary (Archive)
+
+> Historical archive: this file describes the initial scaffold state from early project setup. Current behavior, architecture, and deployment are documented in `README.md`, `docs/SETUP.md`, and `docs/DEPLOYMENT.md`.
 
 ## 🎉 Initialization Complete!
 
-The Homeshare v2 multi-chain real estate crowdfunding platform has been successfully initialized with a complete monorepo structure, three functional packages, comprehensive documentation, and verified build processes.
+The Brickt multi-chain real estate crowdfunding platform (initially scaffolded as Homeshare v2) was initialized with a monorepo structure, three packages, foundational documentation, and verified build processes.
 
 ## 📦 What Was Created
 
@@ -162,7 +164,7 @@ Six comprehensive documentation files:
 
 ### Project Structure
 ```
-homeshare-v2/
+brickt/
 ├── docs/ (6 files)
 ├── packages/
 │   ├── frontend/ (66 files)
@@ -300,8 +302,8 @@ MIT License - See LICENSE file for details
 
 ## 👥 Team
 
-- Repository: https://github.com/Shehuna2/homeshare-v2
-- Owner: Shehuna2
+- Repository: `<your-repo-url>`
+- Owner: Brickt maintainers
 
 ---
 

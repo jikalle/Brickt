@@ -1,8 +1,8 @@
-# Homeshare v2 Architecture
+# Brickt Architecture
 
 ## Overview
 
-Homeshare v2 is a Base-native real-estate crowdfunding platform. The current `v1` stack is centered on Base Sepolia (`84532`) for indexed data and API validation, with Base mainnet as the launch target.
+Brickt is a Base-native real-estate crowdfunding platform. The current `v1` stack is centered on Base Sepolia (`84532`) for indexed data and API validation, with Base mainnet as the launch target.
 
 The product model:
 - Investors contribute USDC to campaign contracts.

@@ -1,123 +1,61 @@
-# Brickt 🏠
+# Brickt
 
-> Base-Native Real Estate Crowdfunding Platform
+Brickt is a Base-first real estate crowdfunding MVP. Admins create onchain campaigns for properties, investors fund with USDC, and investors later claim equity and distributed profit.
 
-Brickt is a decentralized real estate crowdfunding platform focused on Base. Investors fund properties with USDC, receive tokenized equity, and claim onchain profit distributions.
+## Live URLs
 
-## 🌐 Supported Networks
+- Frontend: `https://brickt-frontend.vercel.app`
+- Backend API: `https://brickt.onrender.com`
 
-- **Base Sepolia**: USDC, ETH (active development/testing)
-- **Base Mainnet**: USDC, USDT, ETH (launch target)
+## Current Stack
 
-## 🏗️ Project Structure
+- `packages/frontend`: React + Vite + wagmi
+- `packages/backend`: Express + Sequelize + Postgres
+- `packages/contracts`: Solidity + Hardhat
+- Network: Base Sepolia (current production/test environment)
 
-This is a monorepo managed with pnpm workspaces:
+## Core Product Flows
 
-```
-homeshare-v2/
-├── packages/
-│   ├── frontend/      # React 18 + TypeScript + Vite
-│   ├── backend/       # Node.js/Express + TypeScript
-│   └── contracts/     # Solidity + Hardhat
-├── docs/              # Project documentation
-└── scripts/           # Utility scripts
-```
+- Property creation and updates (including media, YouTube embed, coordinates, strategy `bestFor`)
+- Property intent processing -> deploys `PropertyCrowdfund`, `EquityToken`, `ProfitDistributor`
+- Investment tracking and campaign lifecycle (`check`, `finalize`, `withdraw`)
+- Combined settlement wizard (profit + platform fee)
+- Investor claim flows (equity + profit)
 
-## 🚀 Quick Start
+## Processing Modes
 
-### Prerequisites
+- `hybrid`: long-running workers + API
+- `manual_no_worker`: API with on-demand/scheduled processing endpoint
 
-- Node.js 18+
-- pnpm (or npm/yarn)
-- Git
+Current production uses `NO_WORKER_MODE=true` with scheduled calls to:
 
-### Installation
+- `POST /v1/admin/processing/cron`
+
+## Quick Start (Local)
 
 ```bash
-# Clone the repository
-git clone https://github.com/Shehuna2/homeshare-v2.git
-cd homeshare-v2
-
-# Install dependencies
+git clone <your-repo-url>
+cd <your-repo-dir>
 pnpm install
 
-# Setup environment files
 cp packages/frontend/.env.example packages/frontend/.env.local
-cp packages/backend/.env.example packages/backend/.env.local
-cp packages/contracts/.env.example packages/contracts/.env.local
+cp packages/backend/.env.example packages/backend/.env
+cp packages/contracts/.env.example packages/contracts/.env
 
-# Start development servers
+pnpm --filter @homeshare/contracts compile
+pnpm --filter @homeshare/backend migrate
 pnpm dev
 ```
 
-## 📦 Packages
+## Documentation
 
-### Frontend
-- React 18 with TypeScript
-- Vite for fast development
-- TailwindCSS for styling
-- Wagmi for Base wallet integration
-- Redux Toolkit for state management
-
-### Backend
-- Express.js with TypeScript
-- PostgreSQL for data persistence
-- Base event indexing service
-- JWT-based authentication
-
-### Contracts
-- Solidity smart contracts
-- Hardhat development environment
-- Base-focused deployment scripts
-- OpenZeppelin contracts
-
-## 📚 Documentation
-
-- [Architecture](./docs/ARCHITECTURE.md)
-- [Execution Board](./docs/EXECUTION_BOARD.md)
-- [Setup Guide](./docs/SETUP.md)
+- [Setup](./docs/SETUP.md)
 - [Deployment](./docs/DEPLOYMENT.md)
-- [MVP Go-Live Checklist](./docs/MVP_GO_LIVE_CHECKLIST.md)
-- [Launch-Day Runbook](./docs/LAUNCH_DAY_RUNBOOK.md)
-- [CI/CD Guide](./docs/CI_CD.md)
-- [Observability Guide](./docs/OBSERVABILITY.md)
 - [Intent Operations](./docs/OPERATIONS_INTENTS.md)
-- [Threat Model](./docs/THREAT_MODEL.md)
-- [Compliance Readiness](./docs/COMPLIANCE_READINESS.md)
-- [Investor Disclosures](./docs/INVESTOR_DISCLOSURES.md)
-- [API Documentation](./docs/API.md)
-- [Smart Contracts](./docs/SMART_CONTRACTS.md)
-- [Contributing](./docs/CONTRIBUTING.md)
+- [Launch-Day Runbook](./docs/LAUNCH_DAY_RUNBOOK.md)
+- [MVP Go-Live Checklist](./docs/MVP_GO_LIVE_CHECKLIST.md)
+- [API](./docs/API.md)
 
-## 🔑 Key Features
-
-✅ **Base-Only Focus** - Built for Base Sepolia and Base Mainnet  
-✅ **USDC Investment Rails** - USDC-first fundraising and payouts  
-✅ **Real Estate Tokenization** - Fractional ownership through ERC20 tokens  
-✅ **Investor Dashboard** - Track investments and claims from indexed onchain data  
-✅ **Owner Console** - Manage properties and distribute profits  
-✅ **Type Safety** - Full TypeScript across all packages  
-
-## 🛠️ Development
-
-```bash
-# Build all packages
-pnpm build
-
-# Run tests
-pnpm test
-
-# Lint code
-pnpm lint
-
-# Clean all
-pnpm clean
-```
-
-## 📄 License
+## License
 
 MIT
-
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for details on how to contribute to this project.

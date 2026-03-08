@@ -1,6 +1,6 @@
-# Homeshare v2 Execution Board
+# Brickt Execution Board
 
-This is the delivery source of truth to complete Homeshare v2 to production readiness.
+This is the delivery source of truth to move Brickt from MVP to production readiness.
 
 ## Program Rules
 

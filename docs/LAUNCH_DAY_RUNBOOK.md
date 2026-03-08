@@ -19,12 +19,31 @@ pnpm --filter @homeshare/frontend build
 ## 2) Start Backend API
 
 ```bash
-pnpm --filter @homeshare/backend dev
+pnpm --filter @homeshare/backend start
 ```
 
 If you run API separately in production, start your production process manager command instead.
 
-## 3) Start Worker Supervisor (Runtime Mode)
+## 3) Processing Mode
+
+### Preferred: No-Worker Scheduled Mode
+
+Set:
+
+```bash
+export NO_WORKER_MODE=true
+```
+
+Trigger one cycle:
+
+```bash
+curl -X POST "http://localhost:3000/v1/admin/processing/cron?indexerSync=true" \
+  -H "x-cron-token: $PROCESSING_CRON_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### Optional: Worker Supervisor (Fallback Mode)
 
 Stop old workers first:
 
@@ -133,20 +152,9 @@ tail -n 120 /tmp/intent-workers.log
 pkill -f "process:intents:watch|start-intent-workers.mjs|process-property-intents.mjs|process-profit-intents.mjs|process-platform-fee-intents.mjs|process-indexer-sync.mjs|process-campaign-lifecycle.mjs" || true
 ```
 
-## 8b) No-Worker Cron Mode (Low-Cost)
-
-When `NO_WORKER_MODE=true`, you can trigger one processing cycle on demand from cron:
-
-```bash
-curl -X POST "http://localhost:3000/v1/admin/processing/cron?indexerSync=true" \
-  -H "x-cron-token: $PROCESSING_CRON_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-Recommended schedule:
-- Every 2-5 minutes with `indexerSync=false`
-- Every 10-15 minutes with `indexerSync=true`
+Recommended schedule for no-worker mode:
+- Every 3 minutes with `indexerSync=false`
+- Every 15 minutes with `indexerSync=true`
 
 ## 9) Go/No-Go Reminder
 

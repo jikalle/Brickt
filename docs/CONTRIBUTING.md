@@ -1,6 +1,6 @@
-# Contributing to Homeshare v2
+# Contributing to Brickt
 
-Thank you for your interest in contributing to Homeshare v2! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Brickt. This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
@@ -12,8 +12,8 @@ Thank you for your interest in contributing to Homeshare v2! This document provi
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/homeshare-v2.git`
-3. Add upstream remote: `git remote add upstream https://github.com/Shehuna2/homeshare-v2.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/Brickt.git`
+3. Add upstream remote: `git remote add upstream https://github.com/jikalle/Brickt.git`
 4. Follow the [setup guide](./SETUP.md)
 
 ## Development Workflow
@@ -155,7 +155,7 @@ function createCampaign(
 Understanding the structure:
 
 ```
-homeshare-v2/
+Brickt/
 ├── packages/
 │   ├── frontend/          # React application
 │   │   ├── src/
@@ -252,8 +252,7 @@ When requesting features:
 **Do NOT open public issues for security vulnerabilities.**
 
 Instead:
-- Email security@homeshare.com (if available)
-- Or open a private security advisory on GitHub
+- Open a private security advisory on GitHub
 
 ## Community
 
@@ -274,4 +273,4 @@ Contributors will be:
 - Check existing documentation
 - Ask in Issues (for project-specific questions)
 
-Thank you for contributing to Homeshare v2! 🏠
+Thank you for contributing to Brickt.

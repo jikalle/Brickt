@@ -2,7 +2,7 @@
 
 ## Overview
 
-Homeshare uses GitHub Actions for continuous integration and gated promotions.
+Brickt uses GitHub Actions for continuous integration and gated promotions.
 
 Workflows:
 
@@ -38,15 +38,15 @@ Stages:
 1. Validate candidate (tests + builds)
 2. Package artifacts (`backend/dist`, `frontend/dist`)
 3. Deploy job bound to GitHub environment:
-   - `homeshare-staging`
-   - `homeshare-production`
+   - `brickt-staging`
+   - `brickt-production`
 
 ## Required GitHub Environment Setup
 
 Create GitHub environments:
 
-1. `homeshare-staging`
-2. `homeshare-production`
+1. `brickt-staging`
+2. `brickt-production`
 
 Recommended protection rules:
 
