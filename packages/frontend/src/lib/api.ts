@@ -3,6 +3,7 @@ import { env } from '../config/env';
 const API_ROOT = env.API_BASE_URL;
 const API_AUTH_BASE = `${API_ROOT}/v1`;
 const API_V1_BASE = `${API_ROOT}/v1`;
+export type PropertyBestFor = 'sell' | 'rent' | 'build_and_sell' | 'build_and_rent';
 
 export interface AuthResponse {
   token: string;
@@ -27,6 +28,7 @@ export interface PropertyIntentPayload {
   name: string;
   description: string;
   location: string;
+  bestFor?: PropertyBestFor | null;
   imageUrl?: string;
   imageUrls?: string[];
   youtubeEmbedUrl?: string;
@@ -90,6 +92,7 @@ export interface PropertyIntentResponse {
   name: string;
   location: string;
   description: string;
+  bestFor: PropertyBestFor | null;
   imageUrl: string | null;
   imageUrls: string[];
   youtubeEmbedUrl: string | null;
@@ -154,6 +157,7 @@ export interface PropertyResponse {
   name: string;
   description: string;
   location: string;
+  bestFor: PropertyBestFor | null;
   imageUrl: string | null;
   imageUrls: string[];
   youtubeEmbedUrl: string | null;
@@ -626,6 +630,7 @@ export async function createPropertyIntent(payload: PropertyIntentPayload, token
       name: payload.name,
       location: payload.location,
       description: payload.description,
+      bestFor: payload.bestFor ?? null,
       imageUrl: payload.imageUrl ?? null,
       imageUrls: payload.imageUrls ?? [],
       youtubeEmbedUrl: payload.youtubeEmbedUrl ?? null,
@@ -1157,6 +1162,7 @@ export async function updateAdminProperty(
     name?: string;
     location?: string;
     description?: string;
+    bestFor?: PropertyBestFor | null;
     imageUrl?: string | null;
     imageUrls?: string[] | null;
     youtubeEmbedUrl?: string | null;

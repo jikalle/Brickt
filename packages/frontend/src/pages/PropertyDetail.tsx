@@ -38,6 +38,7 @@ type PropertyLike = {
   name?: string
   description?: string
   location?: string
+  bestFor?: string | null
   crowdfundAddress?: string
   youtubeEmbedUrl?: string | null
   latitude?: number | null
@@ -186,6 +187,12 @@ const buildGoogleMapsCoordUrl = (latitude?: number | null, longitude?: number | 
   if (typeof latitude !== 'number' || typeof longitude !== 'number') return null
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
   return `https://www.google.com/maps?q=${latitude},${longitude}`
+}
+
+const formatBestFor = (bestFor: string | null | undefined): string => {
+  if (!bestFor) return '--'
+  const normalized = bestFor.split('_').join(' ')
+  return normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())
 }
 
 const toBuilderDataSuffix = (codes: string[]): string | null => {
@@ -410,7 +417,7 @@ function PropertyPremiumLayout({
             </Section>
 
             <Section title="Investment Thesis" eyebrow="Why this deal">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                   <h4 className="font-semibold">Location</h4>
                   <div className="mt-2 flex items-center justify-between gap-3">
@@ -429,6 +436,11 @@ function PropertyPremiumLayout({
                       </a>
                     ) : null}
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  <h4 className="font-semibold">Best For</h4>
+                  <p className="mt-2 text-sm text-slate-400">{formatBestFor(safeProperty.bestFor)}</p>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">

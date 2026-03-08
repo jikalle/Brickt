@@ -308,6 +308,7 @@ const parseIntentStatus = (value: unknown): 'pending' | 'submitted' | 'confirmed
 };
 
 type IntentTableKey = 'property' | 'profit' | 'platformFee';
+const PROPERTY_BEST_FOR_VALUES = new Set(['sell', 'rent', 'build_and_sell', 'build_and_rent']);
 
 const parseIntentTable = (value: unknown): IntentTableKey => {
   const normalized = value?.toString().trim().toLowerCase();
@@ -350,6 +351,19 @@ const parseOptionalMultiplierBps = (value: unknown, field: string): number | nul
     throw new ValidationError(`Invalid ${field}. Use an integer between 1 and 100000`);
   }
   return parsed;
+};
+
+const parseOptionalBestFor = (value: unknown): string | null => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const normalized = value.toString().trim().toLowerCase();
+  if (!PROPERTY_BEST_FOR_VALUES.has(normalized)) {
+    throw new ValidationError(
+      'Invalid bestFor. Use one of: sell, rent, build_and_sell, build_and_rent'
+    );
+  }
+  return normalized;
 };
 
 const parseOptionalHttpUrl = (value: unknown, field: string): string | null => {
@@ -701,6 +715,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
     const name = req.body.name?.toString().trim();
     const location = req.body.location?.toString().trim();
     const description = req.body.description?.toString().trim();
+    const bestFor = parseOptionalBestFor(req.body.bestFor);
     const imageUrl = parseOptionalHttpUrl(req.body.imageUrl, 'imageUrl');
     const imageUrls = parseOptionalImageUrls(req.body.imageUrls);
     const youtubeEmbedUrl = normalizeYoutubeEmbedUrl(req.body.youtubeEmbedUrl);
@@ -771,6 +786,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
         name,
         location,
         description,
+        best_for,
         image_url,
         gallery_image_urls,
         youtube_embed_url,
@@ -796,6 +812,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
         :name,
         :location,
         :description,
+        :bestFor,
         :imageUrl,
         :galleryImageUrls,
         :youtubeEmbedUrl,
@@ -819,6 +836,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
         name,
         location,
         description,
+        best_for AS "bestFor",
         image_url AS "imageUrl",
         gallery_image_urls AS "imageUrls",
         youtube_embed_url AS "youtubeEmbedUrl",
@@ -851,6 +869,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
           name,
           location,
           description,
+          bestFor,
           imageUrl,
           galleryImageUrls: JSON.stringify(mergedGallery),
           youtubeEmbedUrl,
@@ -1289,6 +1308,7 @@ export const listPropertyIntents = async (req: AuthenticatedRequest, res: Respon
         name,
         location,
         description,
+        best_for AS "bestFor",
         image_url AS "imageUrl",
         gallery_image_urls AS "imageUrls",
         youtube_embed_url AS "youtubeEmbedUrl",

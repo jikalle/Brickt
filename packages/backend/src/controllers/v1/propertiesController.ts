@@ -27,6 +27,7 @@ type PropertyRow = {
   name: string;
   location: string;
   description: string;
+  bestFor: string | null;
   imageUrl: string | null;
   imageUrls: string[];
   youtubeEmbedUrl: string | null;
@@ -83,6 +84,8 @@ type ProfitClaimRow = {
   createdAt: string;
 };
 
+const PROPERTY_BEST_FOR_VALUES = new Set(['sell', 'rent', 'build_and_sell', 'build_and_rent']);
+
 export const listProperties = async (req: Request, res: Response) => {
   try {
     const limit = parseLimit(req.query.limit);
@@ -95,6 +98,7 @@ export const listProperties = async (req: Request, res: Response) => {
         name,
         location,
         description,
+        best_for AS "bestFor",
         image_url AS "imageUrl",
         COALESCE(
           (
@@ -161,6 +165,7 @@ export const getProperty = async (req: Request, res: Response) => {
         name,
         location,
         description,
+        best_for AS "bestFor",
         image_url AS "imageUrl",
         COALESCE(
           (
@@ -269,6 +274,19 @@ const parseOptionalMultiplierBps = (value: unknown, field: string): number | nul
   return parsed;
 };
 
+const parseOptionalBestFor = (value: unknown): string | null => {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const normalized = value.toString().trim().toLowerCase();
+  if (!PROPERTY_BEST_FOR_VALUES.has(normalized)) {
+    throw new ValidationError(
+      'Invalid bestFor. Use one of: sell, rent, build_and_sell, build_and_rent'
+    );
+  }
+  return normalized;
+};
+
 const parseOptionalImageUrls = (value: unknown): string[] | null => {
   if (value === undefined) {
     return null;
@@ -353,6 +371,7 @@ const selectPropertyById = async (propertyId: string): Promise<PropertyRow | nul
       name,
       location,
       description,
+      best_for AS "bestFor",
       image_url AS "imageUrl",
       COALESCE(
         (
@@ -405,6 +424,7 @@ export const listAdminProperties = async (req: AuthenticatedRequest, res: Respon
         name,
         location,
         description,
+        best_for AS "bestFor",
         image_url AS "imageUrl",
         COALESCE(
           (
@@ -453,6 +473,7 @@ export const updateAdminProperty = async (req: AuthenticatedRequest, res: Respon
     const hasName = Object.prototype.hasOwnProperty.call(req.body, 'name');
     const hasLocation = Object.prototype.hasOwnProperty.call(req.body, 'location');
     const hasDescription = Object.prototype.hasOwnProperty.call(req.body, 'description');
+    const hasBestFor = Object.prototype.hasOwnProperty.call(req.body, 'bestFor');
     const hasImageUrl = Object.prototype.hasOwnProperty.call(req.body, 'imageUrl');
     const hasImageUrls = Object.prototype.hasOwnProperty.call(req.body, 'imageUrls');
     const hasYoutubeEmbedUrl = Object.prototype.hasOwnProperty.call(req.body, 'youtubeEmbedUrl');
@@ -488,6 +509,7 @@ export const updateAdminProperty = async (req: AuthenticatedRequest, res: Respon
       !hasName &&
       !hasLocation &&
       !hasDescription &&
+      !hasBestFor &&
       !hasImageUrl &&
       !hasImageUrls &&
       !hasYoutubeEmbedUrl &&
@@ -502,7 +524,7 @@ export const updateAdminProperty = async (req: AuthenticatedRequest, res: Respon
       !hasOptimisticMultiplierBps
     ) {
       throw new ValidationError(
-        'Provide at least one field to update: name, location, description, imageUrl, imageUrls, youtubeEmbedUrl, latitude, longitude, estimatedSellUsdcBaseUnits, conservative/base/optimistic scenario values'
+        'Provide at least one field to update: name, location, description, bestFor, imageUrl, imageUrls, youtubeEmbedUrl, latitude, longitude, estimatedSellUsdcBaseUnits, conservative/base/optimistic scenario values'
       );
     }
 
@@ -529,6 +551,11 @@ export const updateAdminProperty = async (req: AuthenticatedRequest, res: Respon
       if (!value) throw new ValidationError('description is required');
       updates.push('description = :description');
       replacements.description = value;
+    }
+    if (hasBestFor) {
+      const value = parseOptionalBestFor(req.body.bestFor);
+      updates.push('best_for = :bestFor');
+      replacements.bestFor = value;
     }
     if (hasImageUrl) {
       const value = parseOptionalUrl(req.body.imageUrl, 'imageUrl');

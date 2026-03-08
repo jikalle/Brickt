@@ -54,11 +54,18 @@ import type {
   PropertyIntentResponse,
   IntentType,
   CampaignLifecyclePreflightResponse,
+  PropertyBestFor,
 } from '../lib/api';
 
 const PROFIT_ADVANCED_KEY = 'homeshare:owner:profit-advanced';
 const PLATFORM_ADVANCED_KEY = 'homeshare:owner:platform-advanced';
 const COMBINED_HISTORY_KEY = 'homeshare:owner:combined-history';
+const PROPERTY_BEST_FOR_OPTIONS: Array<{ value: PropertyBestFor; label: string }> = [
+  { value: 'sell', label: 'Best for: Sell' },
+  { value: 'rent', label: 'Best for: Rent' },
+  { value: 'build_and_sell', label: 'Best for: Build and Sell' },
+  { value: 'build_and_rent', label: 'Best for: Build and Rent' },
+];
 
 const loadToggle = (key: string): boolean => {
   try {
@@ -395,6 +402,7 @@ export default function OwnerConsole() {
     propertyId: '',
     name: '',
     description: '',
+    bestFor: 'sell' as PropertyBestFor,
     location: '',
     imageUrl: '',
     imageUrlsText: '',
@@ -463,6 +471,7 @@ export default function OwnerConsole() {
   const [editingPropertyId, setEditingPropertyId] = useState('');
   const [editPropertyForm, setEditPropertyForm] = useState({
     name: '',
+    bestFor: 'sell' as PropertyBestFor,
     location: '',
     description: '',
     imageUrl: '',
@@ -480,6 +489,7 @@ export default function OwnerConsole() {
   });
   const [initialEditPropertyForm, setInitialEditPropertyForm] = useState({
     name: '',
+    bestFor: 'sell' as PropertyBestFor,
     location: '',
     description: '',
     imageUrl: '',
@@ -1005,6 +1015,7 @@ export default function OwnerConsole() {
             .slice(0, 48),
         name: propertyForm.name,
         description: propertyForm.description,
+        bestFor: propertyForm.bestFor,
         location: propertyForm.location,
         imageUrl: propertyForm.imageUrl.trim() || undefined,
         imageUrls: propertyForm.imageUrlsText
@@ -1121,6 +1132,7 @@ export default function OwnerConsole() {
       setPropertyForm({
         propertyId: '',
         name: '',
+        bestFor: 'sell' as PropertyBestFor,
         description: '',
         location: '',
         imageUrl: '',
@@ -1807,6 +1819,7 @@ export default function OwnerConsole() {
   const openEditPropertyModal = (property: AdminPropertyResponse) => {
     const nextForm = {
       name: property.name ?? '',
+      bestFor: (property.bestFor ?? 'sell') as PropertyBestFor,
       location: property.location ?? '',
       description: property.description ?? '',
       imageUrl: property.imageUrl ?? '',
@@ -1876,6 +1889,7 @@ export default function OwnerConsole() {
       }
       await updateAdminProperty(token, editingPropertyId, {
         name: editPropertyForm.name.trim(),
+        bestFor: editPropertyForm.bestFor,
         location: editPropertyForm.location.trim(),
         description: editPropertyForm.description.trim(),
         imageUrl: editPropertyForm.imageUrl.trim() || null,
@@ -3158,6 +3172,17 @@ export default function OwnerConsole() {
                     value={propertyForm.propertyId}
                     onChange={(event) => handlePropertyChange('propertyId', event.target.value)}
                   />
+                  <select
+                    className="w-full rounded-lg border border-slate-700/60 bg-slate-900/70 px-4 py-2 text-slate-100 focus:border-blue-500/50 focus:outline-none transition-all"
+                    value={propertyForm.bestFor}
+                    onChange={(event) => handlePropertyChange('bestFor', event.target.value)}
+                  >
+                    {PROPERTY_BEST_FOR_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     className="w-full rounded-lg border border-slate-700/60 bg-slate-900/70 px-4 py-2 text-slate-100 placeholder-slate-400 focus:border-blue-500/50 focus:outline-none transition-all"
                     placeholder="Location"
@@ -3510,6 +3535,17 @@ export default function OwnerConsole() {
                     value={editPropertyForm.name}
                     onChange={(event) => handleEditPropertyChange('name', event.target.value)}
                   />
+                  <select
+                    className="w-full rounded-lg border border-slate-700/60 bg-slate-900/70 px-4 py-2 text-slate-100 focus:border-blue-500/50 focus:outline-none transition-all"
+                    value={editPropertyForm.bestFor}
+                    onChange={(event) => handleEditPropertyChange('bestFor', event.target.value)}
+                  >
+                    {PROPERTY_BEST_FOR_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     className="w-full rounded-lg border border-slate-700/60 bg-slate-900/70 px-4 py-2 text-slate-100 placeholder-slate-400 focus:border-blue-500/50 focus:outline-none transition-all"
                     placeholder="Location"
@@ -4228,6 +4264,7 @@ export default function OwnerConsole() {
                             <th className="px-3 py-2 font-semibold">Property</th>
                             <th className="px-3 py-2 font-semibold">Status</th>
                             <th className="px-3 py-2 font-semibold">Location</th>
+                            <th className="px-3 py-2 font-semibold">Best For</th>
                             <th className="px-3 py-2 font-semibold text-right">Actions</th>
                           </tr>
                         </thead>
@@ -4253,6 +4290,9 @@ export default function OwnerConsole() {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 align-middle text-slate-300">{property.location || 'N/A'}</td>
+                                <td className="px-3 py-2 align-middle text-slate-300">
+                                  (property.bestFor || 'N/A').split('_').join(' ')
+                                </td>
                                 <td className="px-3 py-2 align-middle text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button

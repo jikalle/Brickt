@@ -42,6 +42,11 @@ const formatCountdown = (startTimeIso: string, nowMs: number): string | null => 
 
 const toUsdcNumber = (baseUnits: string | null | undefined): number =>
   Number(baseUnits ?? '0') / 1_000_000;
+const formatBestFor = (bestFor: string | null | undefined): string | null => {
+  if (!bestFor) return null;
+  const normalized = bestFor.split('_').join(' ');
+  return `Best for: ${normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())}`;
+};
 
 type PropertyFundingPhase = 'NOT_STARTED' | 'ACTIVE' | 'FUNDED' | 'FAILED' | 'ENDED' | 'UNKNOWN';
 
@@ -271,7 +276,7 @@ export default function Properties() {
                       {/* Status Badge */}
                       {campaign && (
                         <div className="absolute top-3 left-3">
-                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
+                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500 border border-blue-500/30 text-gray-300">
                             {fundingPhase}
                           </div>
                         </div>
@@ -287,6 +292,13 @@ export default function Properties() {
                         <p className="text-slate-400 text-sm line-clamp-2">
                           {property.description}
                         </p>
+                        {formatBestFor(property.bestFor) && (
+                          <div className="mt-3">
+                            <span className="inline-flex rounded-full border border-cyan-500/40 bg-cyan-500 px-2.5 py-1 text-[11px] font-medium text-gray-800">
+                              {formatBestFor(property.bestFor)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Stats */}
@@ -297,12 +309,7 @@ export default function Properties() {
                             ${targetUsdc.toLocaleString()} USDC
                           </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">Raised</span>
-                          <span className="text-sm font-semibold text-emerald-300">
-                            ${raisedUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC
-                          </span>
-                        </div>
+                        
                         <div>
                           <div className="mb-1 flex items-center justify-between text-xs">
                             <span className="text-slate-500">Funding Progress</span>
@@ -343,12 +350,6 @@ export default function Properties() {
                           </>
                         )}
 
-                        {property.platformFeeBps !== null && (
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-500">Platform Fee</span>
-                            <span className="text-slate-400">{(property.platformFeeBps / 100).toFixed(2)}%</span>
-                          </div>
-                        )}
                       </div>
 
                       {/* CTA */}
