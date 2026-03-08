@@ -111,7 +111,7 @@ export const listMyInvestments = async (req: AuthenticatedRequest, res: Response
       JOIN properties p ON p.id = ci.property_id
       WHERE ci.chain_id = :chainId
         AND c.chain_id = :chainId
-        AND ci.investor_address = :investorAddress
+        AND LOWER(ci.investor_address) = LOWER(:investorAddress)
         ${
           cursor
             ? 'AND (ci.block_number, ci.log_index) > (:cursorBlockNumber, :cursorLogIndex)'
@@ -174,7 +174,7 @@ export const listMyEquityClaims = async (req: AuthenticatedRequest, res: Respons
       JOIN properties p ON p.id = ec.property_id
       LEFT JOIN campaigns c ON c.id = ec.campaign_id
       WHERE ec.chain_id = :chainId
-        AND ec.claimant_address = :claimantAddress
+        AND LOWER(ec.claimant_address) = LOWER(:claimantAddress)
         ${
           cursor
             ? 'AND (ec.block_number, ec.log_index) > (:cursorBlockNumber, :cursorLogIndex)'
@@ -235,7 +235,7 @@ export const listMyProfitClaims = async (req: AuthenticatedRequest, res: Respons
       JOIN profit_distributors pdistr ON pdistr.id = pc.profit_distributor_id
       JOIN properties p ON p.id = pc.property_id
       WHERE pc.chain_id = :chainId
-        AND pc.claimer_address = :claimerAddress
+        AND LOWER(pc.claimer_address) = LOWER(:claimerAddress)
         ${
           cursor
             ? 'AND (pc.block_number, pc.log_index) > (:cursorBlockNumber, :cursorLogIndex)'
@@ -290,7 +290,7 @@ export const listMyProfitStatus = async (req: AuthenticatedRequest, res: Respons
           ON c.property_id = p.id
          AND c.chain_id = :chainId
         WHERE ci.chain_id = :chainId
-          AND ci.investor_address = :investorAddress
+          AND LOWER(ci.investor_address) = LOWER(:investorAddress)
       )
       SELECT
         invested.property_id AS "propertyId",
@@ -314,19 +314,19 @@ export const listMyProfitStatus = async (req: AuthenticatedRequest, res: Respons
             FROM campaign_refunds cr
             WHERE cr.chain_id = :chainId
               AND cr.property_id = invested.id
-              AND cr.investor_address = :investorAddress
+              AND LOWER(cr.investor_address) = LOWER(:investorAddress)
           ), 0) AS total_contributed
         FROM campaign_investments ci
         WHERE ci.chain_id = :chainId
           AND ci.property_id = invested.id
-          AND ci.investor_address = :investorAddress
+          AND LOWER(ci.investor_address) = LOWER(:investorAddress)
       ) contrib ON TRUE
       LEFT JOIN LATERAL (
         SELECT SUM(ec.equity_amount_base_units) AS total_claimed
         FROM equity_claims ec
         WHERE ec.chain_id = :chainId
           AND ec.property_id = invested.id
-          AND ec.claimant_address = :investorAddress
+          AND LOWER(ec.claimant_address) = LOWER(:investorAddress)
       ) eqc ON TRUE
       LEFT JOIN LATERAL (
         SELECT
