@@ -26,6 +26,8 @@ import {
 import { BASE_SEPOLIA_USDC } from '../config/tokens.config'
 import { env } from '../config/env'
 import { emitPortfolioActivity } from '../lib/portfolioActivity'
+import TxHashLink from '../components/common/TxHashLink'
+import { extractTxHashes } from '../lib/txHash'
 
 type AssetType = 'USDC' | 'ETH'
 type CampaignPhase = 'NOT_STARTED' | 'ACTIVE' | 'FAILED' | 'ENDED' | 'UNKNOWN'
@@ -67,6 +69,7 @@ type PropertyPremiumLayoutProps = {
   slippagePercent: string
   setSlippagePercent: (value: string) => void
   txStatus?: string
+  txHashesInStatus?: string[]
   txError?: string
   quoteError?: string
   quotedUsdcOutBaseUnits?: bigint | null
@@ -250,6 +253,7 @@ function PropertyPremiumLayout({
   slippagePercent,
   setSlippagePercent,
   txStatus = '',
+  txHashesInStatus = [],
   txError = '',
   quoteError = '',
   quotedUsdcOutBaseUnits = null,
@@ -516,6 +520,13 @@ function PropertyPremiumLayout({
                 {quoteError ? <p className="text-xs text-red-300">{quoteError}</p> : null}
                 {txError ? <p className="text-xs text-red-300">{txError}</p> : null}
                 {txStatus ? <p className="text-xs text-emerald-300">{txStatus}</p> : null}
+                {txHashesInStatus.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {txHashesInStatus.map((txHash) => (
+                      <TxHashLink key={txHash} txHash={txHash} compact />
+                    ))}
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
@@ -981,6 +992,7 @@ export default function PropertyDetail() {
   }, [ethQuote?.minUsdcOutBaseUnits, quotedUsdcOutBaseUnits, slippageBps])
 
   const txInFlight = isInvesting || isClaimingEquity || isClaimingProfit || isClaimingRefund
+  const txHashesInStatus = useMemo(() => extractTxHashes(txStatus), [txStatus])
 
   const ensureBaseSepolia = async (injected: EthereumProvider) => {
     try {
@@ -1501,6 +1513,7 @@ export default function PropertyDetail() {
       slippagePercent={slippagePercent}
       setSlippagePercent={setSlippagePercent}
       txStatus={txStatus}
+      txHashesInStatus={txHashesInStatus}
       txError={txError}
       quoteError={quoteError}
       quotedUsdcOutBaseUnits={quotedUsdcOutBaseUnits}

@@ -22,6 +22,7 @@ import { useAccount } from 'wagmi';
 import { signInWithBaseAccount } from '../lib/baseAccount';
 import { emitPortfolioActivity, subscribePortfolioActivity } from '../lib/portfolioActivity';
 import { env } from '../config/env';
+import TxHashLink from '../components/common/TxHashLink';
 
 // Inline SVG Icons
 const ExternalLink = ({ className }: { className: string }) => (
@@ -545,7 +546,6 @@ export default function InvestorDashboard() {
     return { totalInvested, activeProperties, totalReturns, totalClaimableProfit, totalClaimableEquity };
   }, [investments, profitStatuses, propertiesById]);
 
-  const basescanTxUrl = (txHash: string) => `https://sepolia.basescan.org/tx/${txHash}`;
   const visibleInvestments = showAllInvestments ? investments : investments.slice(0, 3);
   const visibleEquityClaims = showAllEquityClaims ? equityClaims : equityClaims.slice(0, 3);
   const visibleProfitClaims = showAllProfitClaims ? profitClaims : profitClaims.slice(0, 3);
@@ -639,15 +639,9 @@ export default function InvestorDashboard() {
             <div className="mb-6 rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-6 py-4">
               <p className="text-emerald-200 text-sm">{statusMessage}</p>
               {claimSuccessTxHash && (
-                <a
-                  href={basescanTxUrl(claimSuccessTxHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-emerald-300 hover:text-emerald-200 text-xs flex items-center gap-1 mt-3"
-                >
-                  View on BaseScan
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <div className="mt-3">
+                  <TxHashLink txHash={claimSuccessTxHash} />
+                </div>
               )}
             </div>
           )}
@@ -688,15 +682,7 @@ export default function InvestorDashboard() {
                         {pending.type === 'claim-profit' ? 'Profit claim' : 'Equity claim'} · {pending.propertyId}
                       </span>
                     </div>
-                    <a
-                      href={basescanTxUrl(pending.txHash)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-amber-200 hover:text-amber-100 shrink-0"
-                      title="View on BaseScan"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
+                    <TxHashLink txHash={pending.txHash} compact className="shrink-0" />
                   </div>
                 ))}
               </div>
@@ -780,15 +766,7 @@ export default function InvestorDashboard() {
                         >
                           View
                         </Link>
-                        <a
-                          href={basescanTxUrl(investment.txHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-2 text-slate-400 hover:text-slate-200"
-                          title="View on BaseScan"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
+                        <TxHashLink txHash={investment.txHash} compact />
                       </div>
                     </div>
 
@@ -981,14 +959,7 @@ export default function InvestorDashboard() {
                         <p className="text-sm font-semibold text-white truncate">{claim.propertyId}</p>
                         <p className="text-xs text-slate-400">{new Date(claim.createdAt).toLocaleDateString()}</p>
                       </div>
-                      <a
-                        href={basescanTxUrl(claim.txHash)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-slate-400 hover:text-slate-200 ml-2"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
+                      <TxHashLink txHash={claim.txHash} compact className="ml-2" />
                     </div>
                   ))}
                 </div>
@@ -1024,14 +995,7 @@ export default function InvestorDashboard() {
                           ${(Number(claim.usdcAmountBaseUnits) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </p>
                       </div>
-                      <a
-                        href={basescanTxUrl(claim.txHash)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-slate-400 hover:text-slate-200 ml-2"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
+                      <TxHashLink txHash={claim.txHash} compact className="ml-2" />
                     </div>
                   ))}
                 </div>

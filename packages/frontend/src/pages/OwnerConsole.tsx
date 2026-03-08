@@ -38,6 +38,8 @@ import {
   withdrawCampaignFundsAdmin,
 } from '../lib/api';
 import { env } from '../config/env';
+import TxHashLink from '../components/common/TxHashLink';
+import { extractTxHashes } from '../lib/txHash';
 import type {
   AdminMetricsResponse,
   CampaignResponse,
@@ -75,6 +77,8 @@ const loadToggle = (key: string): boolean => {
     return false;
   }
 };
+
+const extractMessageTxHashes = (message: string): string[] => extractTxHashes(message || '');
 
 type CombinedSubmissionRecord = {
   id: string;
@@ -3102,7 +3106,14 @@ export default function OwnerConsole() {
                   : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
               }`}
             >
-              {errorMessage || statusMessage}
+              <div>{errorMessage || statusMessage}</div>
+              {extractMessageTxHashes(errorMessage || statusMessage).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {extractMessageTxHashes(errorMessage || statusMessage).map((txHash) => (
+                    <TxHashLink key={txHash} txHash={txHash} compact />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -4015,7 +4026,14 @@ export default function OwnerConsole() {
                     <span className="font-medium">3) withdraw funds</span>.
                   </p>
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
-                    {smartWithdrawStepMessage || 'Waiting...'}
+                    <div>{smartWithdrawStepMessage || 'Waiting...'}</div>
+                    {extractMessageTxHashes(smartWithdrawStepMessage).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {extractMessageTxHashes(smartWithdrawStepMessage).map((txHash) => (
+                          <TxHashLink key={txHash} txHash={txHash} compact />
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {smartWithdrawPreflight && (
                     <div className="grid gap-2 text-xs text-slate-300 md:grid-cols-2">
@@ -4202,6 +4220,13 @@ export default function OwnerConsole() {
                           {step.status.toUpperCase()}
                         </div>
                         <div className="text-xs text-slate-400">{step.message}</div>
+                        {extractMessageTxHashes(step.message).length > 0 && (
+                          <div className="mt-1 flex flex-wrap justify-end gap-1">
+                            {extractMessageTxHashes(step.message).map((txHash) => (
+                              <TxHashLink key={`${step.key}-${txHash}`} txHash={txHash} compact />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
