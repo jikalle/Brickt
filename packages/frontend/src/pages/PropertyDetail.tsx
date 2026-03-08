@@ -906,22 +906,25 @@ export default function PropertyDetail() {
 
   const campaignState = campaign?.state ?? 'UNKNOWN'
   const campaignStartMs = campaign?.startTime ? Date.parse(campaign.startTime) : null
+  const campaignEndMs = campaign?.endTime ? Date.parse(campaign.endTime) : null
   const hasCampaignStarted = campaignStartMs === null || Number.isNaN(campaignStartMs) || nowMs >= campaignStartMs
+  const hasCampaignEnded = campaignEndMs !== null && !Number.isNaN(campaignEndMs) && nowMs >= campaignEndMs
 
   const campaignPhase: CampaignPhase = useMemo(() => {
     if (!campaign) return 'UNKNOWN'
     if (campaignState === CAMPAIGN_FAILED_STATE) return 'FAILED'
     if (!hasCampaignStarted) return 'NOT_STARTED'
+    if (hasCampaignEnded) return 'ENDED'
     if (campaignState === CAMPAIGN_ACTIVE_STATE) return 'ACTIVE'
     return 'ENDED'
-  }, [campaign, campaignState, hasCampaignStarted])
+  }, [campaign, campaignState, hasCampaignEnded, hasCampaignStarted])
 
   const isTargetReached = useMemo(
     () => campaignTargetBaseUnits > 0n && campaignRaisedBaseUnits >= campaignTargetBaseUnits,
     [campaignRaisedBaseUnits, campaignTargetBaseUnits]
   )
 
-  const canInvest = (campaignPhase === 'ACTIVE' || campaignPhase === 'UNKNOWN') && !isTargetReached
+  const canInvest = campaignPhase === 'ACTIVE' && !isTargetReached
   const canClaimRefund = campaignPhase === 'FAILED'
   const canClaimProfit = claimableProfitBaseUnits !== null && claimableProfitBaseUnits > 0n
   const canClaimEquity = claimableEquityBaseUnits !== null && claimableEquityBaseUnits > 0n
@@ -1440,6 +1443,10 @@ export default function PropertyDetail() {
 
     if (!property) {
       setTxError('Property is not loaded yet.')
+      return
+    }
+    if (!canClaimRefund) {
+      setTxError('Refunds are not available for this campaign.')
       return
     }
 
