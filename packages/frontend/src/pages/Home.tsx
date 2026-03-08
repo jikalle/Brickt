@@ -68,25 +68,21 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Animated card showcase */}
+            {/* Hero property showcase */}
             <div className="relative h-96 animate-fade-in-right hidden md:block md:translate-x-16">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500/20 to-emerald-500/20 backdrop-blur-xl border border-slate-700/50 p-8 flex flex-col justify-between transform hover:scale-105 transition-transform duration-300">
-                <div className="space-y-4">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-400 to-emerald-400 flex items-center justify-center">
-                    <Building2 className="w-6 h-6 text-slate-900" />
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">Monthly Returns</p>
-                    <p className="text-3xl font-light text-white mt-1">8.5%</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">Portfolio Value</span>
-                    <span className="text-emerald-400">+$24,500</span>
-                  </div>
-                  <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
-                    <div className="w-3/4 h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full" />
+              <div className="absolute inset-0 overflow-hidden rounded-2xl border border-slate-700/50 transform hover:scale-105 transition-transform duration-300">
+                <img
+                  src="https://images.unsplash.com/photo-1600607687644-c7171b42498f?auto=format&fit=crop&w=1800&q=80"
+                  alt="Featured modern property"
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/30 to-transparent p-8 flex flex-col justify-end">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                      Live Opportunities
+                    </p>
+                    <p className="text-2xl font-light text-white">Prime Homes on Base</p>
+                    <p className="text-sm text-slate-200">Fractional access to premium real estate inventory.</p>
                   </div>
                 </div>
               </div>
@@ -94,19 +90,48 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Risk Disclosure - Refined */}
-          <div className="mb-32 max-w-4xl">
-            <div className="rounded-2xl bg-amber-500/5 border border-amber-500/20 backdrop-blur px-6 py-4 flex gap-3">
-              <div className="w-5 h-5 rounded-full bg-amber-500/20 flex-shrink-0 flex items-center justify-center mt-0.5">
-                <span className="text-amber-400 text-xs font-bold">!</span>
-              </div>
-              <p className="text-amber-200 text-sm">
-                Investing carries risk of partial or total loss. Review{' '}
-                <Link to="/disclosures" className="underline font-semibold hover:text-amber-100 transition">
-                  Risk Disclosures
-                </Link>{' '}
-                before participating.
-              </p>
+          {/* Featured Homes */}
+          <div className="mb-32">
+            <div className="mb-6">
+              <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase">Featured Homes</p>
+              <h2 className="mt-2 text-3xl md:text-4xl font-light text-white">What You Can Invest In</h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  title: 'Oceanfront Villa',
+                  location: 'Lekki, Lagos',
+                  image:
+                    'https://images.unsplash.com/photo-1512918728675-ed5a9ecdebfd?auto=format&fit=crop&w=1600&q=80',
+                },
+                {
+                  title: 'Urban Luxury Duplex',
+                  location: 'Victoria Island, Lagos',
+                  image:
+                    'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1600&q=80',
+                },
+                {
+                  title: 'Modern Family Estate',
+                  location: 'Abuja, FCT',
+                  image:
+                    'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80',
+                },
+              ].map((home) => (
+                <div
+                  key={home.title}
+                  className="group relative overflow-hidden rounded-2xl border border-slate-700/50 bg-slate-900/60"
+                >
+                  <img
+                    src={home.image}
+                    alt={home.title}
+                    className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-4">
+                    <p className="text-base font-semibold text-white">{home.title}</p>
+                    <p className="text-xs text-slate-200">{home.location}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

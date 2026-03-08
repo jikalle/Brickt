@@ -309,7 +309,8 @@ const styles: Record<string, CSSProperties> = {
   moonContainer: {
     position: 'absolute',
     top: '12%',
-    left: '55%',
+    left: '46%',
+    transform: 'translateX(-50%)',
     animation: 'moonFloat 6s ease-in-out infinite',
   },
   moon: {
