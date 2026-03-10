@@ -6,6 +6,7 @@ import { markOnchainActivityIndexed } from '../lib/onchainActivity.js';
 
 const REORG_DEPTH = 15;
 const DEFAULT_BATCH_SIZE = 1000;
+const DEFAULT_LOG_ADDRESS_CHUNK_SIZE = 8;
 
 const CROWDFUND_STATES = ['ACTIVE', 'SUCCESS', 'FAILED', 'WITHDRAWN'] as const;
 
@@ -60,6 +61,7 @@ export class Indexer {
   private txSenderCache = new Map<string, string>();
   private forcedCrowdfundAddresses: string[];
   private forceStartBlock: boolean;
+  private logAddressChunkSize: number;
 
   constructor(
     provider: JsonRpcProvider,
@@ -81,6 +83,10 @@ export class Indexer {
       .map((value) => value.toLowerCase())
       .filter((value) => /^0x[a-f0-9]{40}$/.test(value));
     this.forceStartBlock = options?.forceStartBlock ?? false;
+    this.logAddressChunkSize = Math.max(
+      1,
+      Number(process.env.INDEXER_LOG_ADDRESS_CHUNK_SIZE ?? DEFAULT_LOG_ADDRESS_CHUNK_SIZE)
+    );
   }
 
   async sync(): Promise<void> {
@@ -545,12 +551,23 @@ export class Indexer {
     fromBlock: number,
     toBlock: number
   ) {
-    return this.provider.getLogs({
-      address: addresses,
-      fromBlock,
-      toBlock,
-      topics: [topic0],
-    });
+    if (!addresses || addresses.length === 0) {
+      return [];
+    }
+
+    const logs = [];
+    for (let index = 0; index < addresses.length; index += this.logAddressChunkSize) {
+      const chunk = addresses.slice(index, index + this.logAddressChunkSize);
+      const chunkLogs = await this.provider.getLogs({
+        address: chunk,
+        fromBlock,
+        toBlock,
+        topics: [topic0],
+      });
+      logs.push(...chunkLogs);
+    }
+
+    return logs;
   }
 
   private normalizeLog(log: any): ParsedChainLog {
