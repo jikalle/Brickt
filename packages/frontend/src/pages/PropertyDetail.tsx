@@ -1128,7 +1128,10 @@ export default function PropertyDetail() {
       emitPortfolioActivity({
         txHash: investTx.hash,
         propertyId: property.propertyId,
+        campaignAddress: property.crowdfundAddress,
+        amountUsdcBaseUnits: amountBaseUnits.toString(),
         type: 'invest',
+        createdAt: new Date().toISOString(),
       })
       void fetchCampaign(property.crowdfundAddress)
         .then((liveCampaign) => setCampaign(liveCampaign))
@@ -1378,7 +1381,10 @@ export default function PropertyDetail() {
       emitPortfolioActivity({
         txHash: investTx.hash,
         propertyId: property.propertyId,
+        campaignAddress: property.crowdfundAddress,
+        amountUsdcBaseUnits: receivedUsdc.toString(),
         type: 'invest',
+        createdAt: new Date().toISOString(),
       })
       void fetchCampaign(property.crowdfundAddress)
         .then((liveCampaign) => setCampaign(liveCampaign))

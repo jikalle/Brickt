@@ -20,7 +20,10 @@ import { RootState } from '../store';
 import { clearUser, setUser } from '../store/slices/userSlice';
 import { useAccount } from 'wagmi';
 import { signInWithBaseAccount } from '../lib/baseAccount';
-import { emitPortfolioActivity, subscribePortfolioActivity } from '../lib/portfolioActivity';
+import {
+  emitPortfolioActivity,
+  subscribePortfolioActivity,
+} from '../lib/portfolioActivity';
 import { env } from '../config/env';
 import TxHashLink from '../components/common/TxHashLink';
 
@@ -41,12 +44,18 @@ const PROFIT_DISTRIBUTOR_ABI = ['function claim() external'];
 const CROWDFUND_ABI = ['function claimTokens() external'];
 const BASE_SEPOLIA_CHAIN_ID_HEX = '0x14A34';
 const ERC8021_SUFFIX = '0x80218021802180218021802180218021';
-const PENDING_CLAIMS_STORAGE_KEY = 'homeshare.pendingClaims';
 
 type PendingClaim = {
   txHash: string;
   propertyId: string;
   type: 'claim-profit' | 'claim-equity';
+  createdAt: string;
+};
+
+type PendingInvestment = {
+  txHash: string;
+  propertyId: string;
+  usdcAmountBaseUnits: string;
   createdAt: string;
 };
 
@@ -155,6 +164,8 @@ export default function InvestorDashboard() {
   const [showAllProfitClaims, setShowAllProfitClaims] = useState(false);
   const [showNonActionableClaims, setShowNonActionableClaims] = useState(false);
   const [pendingClaims, setPendingClaims] = useState<PendingClaim[]>([]);
+  const [pendingInvestments, setPendingInvestments] = useState<PendingInvestment[]>([]);
+  const lastHandledPortfolioActivityRef = useRef<string | null>(null);
   const lastAutoAuthAddressRef = useRef<string | null>(null);
   const hasMatchingConnectedWallet =
     !!connectedWalletAddress &&
@@ -212,6 +223,55 @@ export default function InvestorDashboard() {
       return [next, ...current].slice(0, 20);
     });
   }, []);
+
+  const addPendingInvestment = useCallback((next: PendingInvestment) => {
+    setPendingInvestments((current) => {
+      if (current.some((item) => item.txHash.toLowerCase() === next.txHash.toLowerCase())) {
+        return current;
+      }
+      return [next, ...current].slice(0, 20);
+    });
+  }, []);
+
+  const handlePortfolioActivity = useCallback(
+    (payload: {
+      txHash: string;
+      propertyId: string;
+      type: 'invest' | 'claim-equity' | 'claim-profit' | 'claim-refund';
+      amountUsdcBaseUnits?: string;
+      createdAt?: string;
+      timestamp?: number;
+    }) => {
+      if (!canFetchInvestorData) {
+        return;
+      }
+
+      const activityKey = `${payload.type}:${payload.txHash.toLowerCase()}`;
+      if (lastHandledPortfolioActivityRef.current === activityKey) {
+        return;
+      }
+      lastHandledPortfolioActivityRef.current = activityKey;
+
+      if (
+        payload.type === 'invest' &&
+        payload.amountUsdcBaseUnits &&
+        payload.createdAt
+      ) {
+        addPendingInvestment({
+          txHash: payload.txHash,
+          propertyId: payload.propertyId,
+          usdcAmountBaseUnits: payload.amountUsdcBaseUnits,
+          createdAt: payload.createdAt,
+        });
+        setStatusMessage('Investment confirmed onchain. Waiting for indexer sync...');
+      } else if (payload.type === 'claim-profit' || payload.type === 'claim-equity') {
+        setStatusMessage('Claim confirmed onchain. Waiting for indexer sync...');
+      }
+
+      void loadPortfolio();
+    },
+    [addPendingInvestment, canFetchInvestorData, loadPortfolio]
+  );
 
   const ensureBaseSepolia = async (provider: EthereumProvider) => {
     try {
@@ -333,36 +393,6 @@ export default function InvestorDashboard() {
   };
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(PENDING_CLAIMS_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw) as PendingClaim[];
-      if (Array.isArray(parsed)) {
-        setPendingClaims(
-          parsed.filter(
-            (item) =>
-              typeof item?.txHash === 'string' &&
-              typeof item?.propertyId === 'string' &&
-              (item?.type === 'claim-profit' || item?.type === 'claim-equity')
-          )
-        );
-      }
-    } catch {
-      setPendingClaims([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(PENDING_CLAIMS_STORAGE_KEY, JSON.stringify(pendingClaims));
-    } catch {
-      // Ignore storage write failures.
-    }
-  }, [pendingClaims]);
-
-  useEffect(() => {
     if (pendingClaims.length === 0) {
       return;
     }
@@ -378,6 +408,18 @@ export default function InvestorDashboard() {
       })
     );
   }, [equityClaims, pendingClaims.length, profitClaims]);
+
+  useEffect(() => {
+    if (pendingInvestments.length === 0) {
+      return;
+    }
+    const indexedInvestments = new Set(
+      investments.map((investment) => investment.txHash.toLowerCase())
+    );
+    setPendingInvestments((current) =>
+      current.filter((item) => !indexedInvestments.has(item.txHash.toLowerCase()))
+    );
+  }, [investments, pendingInvestments.length]);
 
   useEffect(() => {
     let isMounted = true;
@@ -398,25 +440,22 @@ export default function InvestorDashboard() {
     if (!canFetchInvestorData) {
       return;
     }
+    const hasPendingSync = pendingClaims.length > 0 || pendingInvestments.length > 0;
     const timer = setInterval(() => {
       void loadPortfolio();
-    }, 15000);
+    }, hasPendingSync ? 5000 : 15000);
     return () => clearInterval(timer);
-  }, [canFetchInvestorData, loadPortfolio]);
+  }, [canFetchInvestorData, loadPortfolio, pendingClaims.length, pendingInvestments.length]);
 
   useEffect(() => {
     if (!canFetchInvestorData) {
       return;
     }
-    const unsubscribe = subscribePortfolioActivity(() => {
-      if (!canFetchInvestorData) {
-        return;
-      }
-      void loadPortfolio();
-      setStatusMessage('Portfolio refreshed after recent onchain activity.');
+    const unsubscribe = subscribePortfolioActivity((payload) => {
+      handlePortfolioActivity(payload);
     });
     return unsubscribe;
-  }, [canFetchInvestorData, loadPortfolio]);
+  }, [canFetchInvestorData, handlePortfolioActivity]);
 
   const authenticateInvestor = async () => {
     setErrorMessage('');
@@ -547,6 +586,9 @@ export default function InvestorDashboard() {
   }, [investments, profitStatuses, propertiesById]);
 
   const visibleInvestments = showAllInvestments ? investments : investments.slice(0, 3);
+  const visiblePendingInvestments = showAllInvestments
+    ? pendingInvestments
+    : pendingInvestments.slice(0, Math.max(0, 3 - visibleInvestments.length));
   const visibleEquityClaims = showAllEquityClaims ? equityClaims : equityClaims.slice(0, 3);
   const visibleProfitClaims = showAllProfitClaims ? profitClaims : profitClaims.slice(0, 3);
   const visiblePendingClaims = pendingClaims.slice(0, 4);
@@ -723,22 +765,59 @@ export default function InvestorDashboard() {
           <div className="mb-8 rounded-2xl bg-slate-900/80 backdrop-blur border border-slate-700/50 p-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold text-white">Investment History</h2>
-              {investments.length > 3 && (
+              {investments.length + pendingInvestments.length > 3 && (
                 <button
                   onClick={() => setShowAllInvestments(!showAllInvestments)}
                   className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
                 >
-                  {showAllInvestments ? 'Show less' : `View all (${investments.length})`}
+                  {showAllInvestments
+                    ? 'Show less'
+                    : `View all (${investments.length + pendingInvestments.length})`}
                 </button>
               )}
             </div>
 
             {!canFetchInvestorData ? (
               <p className="text-slate-400">Authenticate to view investment history.</p>
-            ) : investments.length === 0 ? (
+            ) : investments.length === 0 && pendingInvestments.length === 0 ? (
               <p className="text-slate-400">No investments yet. Start by exploring properties.</p>
             ) : (
               <div className="space-y-4">
+                {visiblePendingInvestments.map((investment) => (
+                  <div
+                    key={`pending-investment:${investment.txHash}`}
+                    className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4"
+                  >
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
+                      <div>
+                        <p className="text-xs text-amber-200/80 mb-1">Property</p>
+                        <p className="text-sm font-semibold text-white truncate">{investment.propertyId}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-amber-200/80 mb-1">Amount</p>
+                        <p className="text-sm font-semibold text-white">
+                          ${(Number(investment.usdcAmountBaseUnits) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-amber-200/80 mb-1">Status</p>
+                        <p className="text-sm font-semibold text-amber-300">Pending index sync</p>
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <Link
+                          to={`/properties/${investment.propertyId}`}
+                          className="flex-1 px-3 py-2 text-xs font-semibold bg-slate-800/50 text-slate-300 rounded hover:bg-slate-700 transition text-center"
+                        >
+                          View
+                        </Link>
+                        <TxHashLink txHash={investment.txHash} compact />
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-100/80">
+                      Confirmed onchain. Waiting for backend indexing before this moves into finalized history.
+                    </p>
+                  </div>
+                ))}
                 {visibleInvestments.map((investment) => (
                   <div
                     key={`${investment.txHash}:${investment.logIndex}`}

@@ -37,6 +37,7 @@ import {
   getPlatformFeeFlowStatus,
   getPlatformFeePreflight,
   repairCampaignSetup,
+  listAdminOnchainActivities,
   listPlatformFeeIntents,
   listProfitDistributionIntents,
   listPropertyIntents,
@@ -93,6 +94,7 @@ router.get('/admin/profits/flow-status', auth, requireRole('owner'), getProfitFl
 router.get('/admin/platform-fees/preflight', auth, requireRole('owner'), getPlatformFeePreflight);
 router.get('/admin/platform-fees/flow-status', auth, requireRole('owner'), getPlatformFeeFlowStatus);
 router.get('/admin/platform-fees/intents', auth, requireRole('owner'), listPlatformFeeIntents);
+router.get('/admin/onchain-activities', auth, requireRole('owner'), listAdminOnchainActivities);
 router.get('/admin/campaigns/preflight', auth, requireRole('owner'), getCampaignLifecyclePreflight);
 router.post('/admin/campaigns/finalize', auth, requireRole('owner'), finalizeCampaign);
 router.post('/admin/campaigns/withdraw', auth, requireRole('owner'), withdrawCampaignFunds);

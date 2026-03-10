@@ -212,6 +212,27 @@ export interface InvestmentResponse {
   createdAt: string;
 }
 
+export interface OnchainActivityResponse {
+  txHash: string;
+  activityType: string;
+  status: 'submitted' | 'confirmed' | 'indexed' | 'failed';
+  actorRole?: 'owner' | 'worker' | null;
+  actorAddress: string | null;
+  propertyId: string | null;
+  campaignAddress: string | null;
+  intentType?: IntentType | null;
+  intentId?: string | null;
+  blockNumber: string | null;
+  logIndex: number | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  indexedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastError: string | null;
+  metadata: Record<string, unknown>;
+}
+
 export interface EquityClaimResponse {
   propertyId: string;
   equityTokenAddress: string;
@@ -931,6 +952,21 @@ export async function fetchAdminMetrics(token: string): Promise<AdminMetricsResp
     throw new Error('Failed to fetch admin metrics');
   }
   return response.json();
+}
+
+export async function fetchAdminOnchainActivities(
+  token: string
+): Promise<OnchainActivityResponse[]> {
+  const response = await fetch(`${API_V1_BASE}/admin/onchain-activities`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch admin activity history');
+  }
+  const data = await response.json();
+  return data.activities ?? [];
 }
 
 export async function fetchProfitPreflight(
