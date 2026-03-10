@@ -9,6 +9,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 const { sequelize } = await import('../dist/db/index.js');
 await import('../dist/config/env.js');
+const { upsertOnchainActivity } = await import('../dist/lib/onchainActivity.js');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,6 +193,36 @@ const markSubmitted = async (id, txHash, crowdfundAddress) => {
     `,
     { replacements: { id, txHash, crowdfundAddress } }
   );
+  const rows = await sequelize.query(
+    `
+    SELECT
+      chain_id AS "chainId",
+      property_id AS "propertyId",
+      created_by_address AS "createdByAddress"
+    FROM property_intents
+    WHERE id = :id
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { id },
+    }
+  );
+  const intent = Array.isArray(rows) ? rows[0] : null;
+  if (intent) {
+    await upsertOnchainActivity(sequelize, {
+      chainId: Number(intent.chainId),
+      txHash,
+      activityType: 'property-deploy',
+      status: 'submitted',
+      actorRole: 'worker',
+      actorAddress: intent.createdByAddress?.toLowerCase?.() ?? null,
+      propertyId: intent.propertyId,
+      campaignAddress: crowdfundAddress ?? null,
+      intentType: 'property',
+      intentId: id,
+    });
+  }
 };
 
 const markConfirmed = async (id) => {
@@ -205,6 +236,38 @@ const markConfirmed = async (id) => {
     `,
     { replacements: { id } }
   );
+  const rows = await sequelize.query(
+    `
+    SELECT
+      chain_id AS "chainId",
+      property_id AS "propertyId",
+      created_by_address AS "createdByAddress",
+      LOWER(crowdfund_contract_address) AS "crowdfundAddress",
+      tx_hash AS "txHash"
+    FROM property_intents
+    WHERE id = :id
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { id },
+    }
+  );
+  const intent = Array.isArray(rows) ? rows[0] : null;
+  if (intent?.txHash) {
+    await upsertOnchainActivity(sequelize, {
+      chainId: Number(intent.chainId),
+      txHash: intent.txHash,
+      activityType: 'property-deploy',
+      status: 'confirmed',
+      actorRole: 'worker',
+      actorAddress: intent.createdByAddress?.toLowerCase?.() ?? null,
+      propertyId: intent.propertyId,
+      campaignAddress: intent.crowdfundAddress ?? null,
+      intentType: 'property',
+      intentId: id,
+    });
+  }
 };
 
 const markFailed = async (id, message) => {

@@ -5,6 +5,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 const { sequelize } = await import('../dist/db/index.js');
 await import('../dist/config/env.js');
+const { upsertOnchainActivity } = await import('../dist/lib/onchainActivity.js');
 
 const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC_URL || '';
 const operatorKey =
@@ -116,6 +117,37 @@ const markSubmitted = async (id, txHash) => {
     `,
     { replacements: { id, txHash } }
   );
+  const rows = await sequelize.query(
+    `
+    SELECT
+      chain_id AS "chainId",
+      property_id AS "propertyId",
+      created_by_address AS "createdByAddress",
+      LOWER(profit_distributor_address) AS "profitDistributorAddress"
+    FROM profit_distribution_intents
+    WHERE id = :id
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { id },
+    }
+  );
+  const intent = Array.isArray(rows) ? rows[0] : null;
+  if (intent) {
+    await upsertOnchainActivity(sequelize, {
+      chainId: Number(intent.chainId),
+      txHash,
+      activityType: 'profit-deposit',
+      status: 'submitted',
+      actorRole: 'worker',
+      actorAddress: intent.createdByAddress?.toLowerCase?.() ?? null,
+      propertyId: intent.propertyId,
+      intentType: 'profit',
+      intentId: id,
+      metadata: { profitDistributorAddress: intent.profitDistributorAddress },
+    });
+  }
 };
 
 const markConfirmed = async (id) => {
@@ -129,6 +161,38 @@ const markConfirmed = async (id) => {
     `,
     { replacements: { id } }
   );
+  const rows = await sequelize.query(
+    `
+    SELECT
+      chain_id AS "chainId",
+      property_id AS "propertyId",
+      created_by_address AS "createdByAddress",
+      LOWER(profit_distributor_address) AS "profitDistributorAddress",
+      tx_hash AS "txHash"
+    FROM profit_distribution_intents
+    WHERE id = :id
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { id },
+    }
+  );
+  const intent = Array.isArray(rows) ? rows[0] : null;
+  if (intent?.txHash) {
+    await upsertOnchainActivity(sequelize, {
+      chainId: Number(intent.chainId),
+      txHash: intent.txHash,
+      activityType: 'profit-deposit',
+      status: 'confirmed',
+      actorRole: 'worker',
+      actorAddress: intent.createdByAddress?.toLowerCase?.() ?? null,
+      propertyId: intent.propertyId,
+      intentType: 'profit',
+      intentId: id,
+      metadata: { profitDistributorAddress: intent.profitDistributorAddress },
+    });
+  }
 };
 
 const markFailed = async (id, message) => {

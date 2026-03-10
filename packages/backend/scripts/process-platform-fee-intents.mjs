@@ -5,6 +5,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 const { sequelize } = await import('../dist/db/index.js');
 await import('../dist/config/env.js');
+const { upsertOnchainActivity } = await import('../dist/lib/onchainActivity.js');
 
 const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC_URL || '';
 const operatorKey = process.env.PLATFORM_OPERATOR_PRIVATE_KEY || '';
@@ -126,6 +127,39 @@ const markConfirmed = async (id) => {
   );
 };
 
+const recordPlatformFeeActivity = async (id, txHash, activityType, status) => {
+  const rows = await sequelize.query(
+    `
+    SELECT
+      chain_id AS "chainId",
+      LOWER(campaign_address) AS "campaignAddress",
+      created_by_address AS "createdByAddress"
+    FROM platform_fee_intents
+    WHERE id = :id
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { id },
+    }
+  );
+  const intent = Array.isArray(rows) ? rows[0] : null;
+  if (!intent) {
+    return;
+  }
+  await upsertOnchainActivity(sequelize, {
+    chainId: Number(intent.chainId),
+    txHash,
+    activityType,
+    status,
+    actorRole: 'worker',
+    actorAddress: intent.createdByAddress?.toLowerCase?.() ?? null,
+    campaignAddress: intent.campaignAddress,
+    intentType: 'platformFee',
+    intentId: id,
+  });
+};
+
 const markFailed = async (id, message) => {
   await sequelize.query(
     `
@@ -173,10 +207,12 @@ const processIntent = async (intent) => {
   }
 
   await markSubmitted(intent.id, tx.hash);
+  await recordPlatformFeeActivity(intent.id, tx.hash, 'platform-fee-configure', 'submitted');
   const receipt = await tx.wait();
   if (!receipt || Number(receipt.status) !== 1) {
     throw new Error('setPlatformFee transaction reverted');
   }
+  await recordPlatformFeeActivity(intent.id, tx.hash, 'platform-fee-configure', 'confirmed');
 
   if (transferAmount > 0n) {
     if (!recipient || recipient === ZeroAddress) {
@@ -210,10 +246,12 @@ const processIntent = async (intent) => {
       }
     }
     await markSubmitted(intent.id, transferTx.hash);
+    await recordPlatformFeeActivity(intent.id, transferTx.hash, 'platform-fee-transfer', 'submitted');
     const transferReceipt = await transferTx.wait();
     if (!transferReceipt || Number(transferReceipt.status) !== 1) {
       throw new Error('platform fee transfer reverted');
     }
+    await recordPlatformFeeActivity(intent.id, transferTx.hash, 'platform-fee-transfer', 'confirmed');
 
     await markConfirmed(intent.id);
     console.log(

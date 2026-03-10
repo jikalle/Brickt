@@ -2,6 +2,7 @@ import { Interface, JsonRpcProvider } from 'ethers';
 import type { Sequelize, Transaction } from 'sequelize';
 import PropertyCrowdfundAbi from './abis/PropertyCrowdfund.json' assert { type: 'json' };
 import ProfitDistributorAbi from './abis/ProfitDistributor.json' assert { type: 'json' };
+import { markOnchainActivityIndexed } from '../lib/onchainActivity.js';
 
 const REORG_DEPTH = 15;
 const DEFAULT_BATCH_SIZE = 1000;
@@ -293,6 +294,20 @@ export class Indexer {
               amount,
               log
             );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'invest',
+                propertyId: campaign.property_id,
+                campaignAddress: contractAddress,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+                metadata: { investor, usdcAmountBaseUnits: amount.toString() },
+              },
+              { transaction }
+            );
             affectedCampaigns.add(campaign.id);
             break;
           }
@@ -306,6 +321,20 @@ export class Indexer {
               investor,
               amount,
               log
+            );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'claim-refund',
+                propertyId: campaign.property_id,
+                campaignAddress: contractAddress,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+                metadata: { investor, usdcAmountBaseUnits: amount.toString() },
+              },
+              { transaction }
             );
             affectedCampaigns.add(campaign.id);
             break;
@@ -321,11 +350,37 @@ export class Indexer {
               raised,
               log
             );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'campaign-finalize',
+                propertyId: campaign.property_id,
+                campaignAddress: contractAddress,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+              },
+              { transaction }
+            );
             inserts.campaignsUpdated += 1;
             break;
           }
           case 'Withdrawn': {
             await this.updateCampaignState(transaction, campaign, 'WITHDRAWN');
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'campaign-withdraw',
+                propertyId: campaign.property_id,
+                campaignAddress: contractAddress,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+              },
+              { transaction }
+            );
             inserts.campaignsUpdated += 1;
             break;
           }
@@ -338,6 +393,20 @@ export class Indexer {
               tokenAddress,
               log,
               contractAddress
+            );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'campaign-repair-setup',
+                propertyId: campaign.property_id,
+                campaignAddress: contractAddress,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+                metadata: { equityTokenAddress: tokenAddress },
+              },
+              { transaction }
             );
             break;
           }
@@ -369,6 +438,20 @@ export class Indexer {
           amount,
           log
         );
+        await markOnchainActivityIndexed(
+          this.db,
+          {
+            chainId,
+            txHash: log.transactionHash,
+            activityType: 'claim-equity',
+            propertyId: campaign.property_id,
+            campaignAddress: contractAddress,
+            blockNumber: log.blockNumber,
+            logIndex: log.logIndex,
+            metadata: { investor, equityAmountBaseUnits: amount.toString() },
+          },
+          { transaction }
+        );
       }
 
       for (const log of sortedProfitLogs) {
@@ -398,6 +481,23 @@ export class Indexer {
               accProfitPerShare,
               log
             );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'profit-deposit',
+                propertyId: distributor.property_id,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+                metadata: {
+                  depositor,
+                  usdcAmountBaseUnits: amount.toString(),
+                  accProfitPerShare: accProfitPerShare.toString(),
+                },
+              },
+              { transaction }
+            );
             break;
           }
           case 'Claimed': {
@@ -410,6 +510,19 @@ export class Indexer {
               claimer,
               amount,
               log
+            );
+            await markOnchainActivityIndexed(
+              this.db,
+              {
+                chainId,
+                txHash: log.transactionHash,
+                activityType: 'claim-profit',
+                propertyId: distributor.property_id,
+                blockNumber: log.blockNumber,
+                logIndex: log.logIndex,
+                metadata: { claimer, usdcAmountBaseUnits: amount.toString() },
+              },
+              { transaction }
             );
             break;
           }

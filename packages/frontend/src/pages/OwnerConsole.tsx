@@ -13,6 +13,7 @@ import {
   createPlatformFeeIntent,
   createProfitDistributionIntent,
   createPropertyIntent,
+  fetchAdminOnchainActivities,
   fetchCampaignLifecyclePreflight,
   fetchAdminProperties,
   fetchAdminMetrics,
@@ -57,6 +58,7 @@ import type {
   IntentType,
   CampaignLifecyclePreflightResponse,
   PropertyBestFor,
+  OnchainActivityResponse,
 } from '../lib/api';
 
 const PROFIT_ADVANCED_KEY = 'homeshare:owner:profit-advanced';
@@ -518,6 +520,7 @@ export default function OwnerConsole() {
   const [, setBulkRetryLoadingScope] = useState<string | null>(null);
   const [, setBulkResetLoadingScope] = useState<string | null>(null);
   const [adminMetrics, setAdminMetrics] = useState<AdminMetricsResponse | null>(null);
+  const [adminOnchainActivities, setAdminOnchainActivities] = useState<OnchainActivityResponse[]>([]);
   const [profitPreflight, setProfitPreflight] = useState<ProfitPreflightResponse | null>(null);
   const [, setProfitFlowStatus] = useState<ProfitFlowStatusResponse | null>(null);
   const [, setProfitChecksLoading] = useState(false);
@@ -790,6 +793,7 @@ export default function OwnerConsole() {
 
   const intentStatusClass = (status: string) => {
     if (status === 'confirmed') return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+    if (status === 'indexed') return 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30';
     if (status === 'failed') return 'bg-red-500/20 text-red-300 border border-red-500/30';
     if (status === 'submitted') return 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
     return 'bg-slate-700/40 text-slate-300 border border-slate-600/30';
@@ -2659,21 +2663,24 @@ export default function OwnerConsole() {
       setProfitIntents([]);
       setPlatformFeeIntents([]);
       setAdminMetrics(null);
+      setAdminOnchainActivities([]);
       setIntentsLoading(false);
       return;
     }
 
     try {
-      const [propertyData, profitData, platformFeeData, metrics] = await Promise.all([
+      const [propertyData, profitData, platformFeeData, metrics, activityData] = await Promise.all([
         fetchPropertyIntents(authToken),
         fetchProfitDistributionIntents(authToken),
         fetchPlatformFeeIntents(authToken),
         fetchAdminMetrics(authToken),
+        fetchAdminOnchainActivities(authToken),
       ]);
       setPropertyIntents(propertyData);
       setProfitIntents(profitData);
       setPlatformFeeIntents(platformFeeData);
       setAdminMetrics(metrics);
+      setAdminOnchainActivities(activityData);
       try {
         const latestRun = await fetchAdminLastProcessingRun(authToken);
         setLastObservedProcessingRun(latestRun.run);
@@ -2707,6 +2714,7 @@ export default function OwnerConsole() {
     setProfitIntents([]);
     setPlatformFeeIntents([]);
     setAdminMetrics(null);
+    setAdminOnchainActivities([]);
     setAdminProperties([]);
     setCampaignLifecyclePreflightByAddress({});
     setIntentsLoading(false);
@@ -4817,6 +4825,42 @@ export default function OwnerConsole() {
                       )}
                     </div>
                   )}
+
+                  <div className="mt-8 rounded-2xl border border-white/10 bg-slate-900/50 p-6 shadow-xl shadow-black/25 backdrop-blur">
+                    <h2 className="mb-4 text-xl font-bold text-white">Recent Onchain Activity</h2>
+                    {adminOnchainActivities.length === 0 ? (
+                      <p className="text-sm text-slate-400">No persisted onchain activity yet.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {adminOnchainActivities.slice(0, 10).map((activity) => (
+                          <div
+                            key={activity.txHash}
+                            className="rounded-lg border border-white/10 bg-slate-800/30 p-3 text-sm"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded border border-slate-700/60 bg-slate-900/50 px-2 py-0.5 text-xs text-slate-300">
+                                  {activity.activityType}
+                                </span>
+                                <span className={`rounded px-2 py-0.5 text-xs font-medium ${intentStatusClass(activity.status)}`}>
+                                  {activity.status}
+                                </span>
+                                {activity.propertyId && (
+                                  <span className="text-slate-300">{activity.propertyId}</span>
+                                )}
+                              </div>
+                              <TxHashLink txHash={activity.txHash} compact />
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                              <span>{new Date(activity.createdAt).toLocaleString()}</span>
+                              {activity.campaignAddress && <span>{activity.campaignAddress.slice(0, 10)}...{activity.campaignAddress.slice(-6)}</span>}
+                              {activity.lastError && <span className="text-red-300">{activity.lastError}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="mt-8 rounded-2xl border border-white/10 bg-slate-900/50 p-6 shadow-xl shadow-black/25 backdrop-blur">
                     <h2 className="mb-4 text-xl font-bold text-white">Last Processing Run</h2>

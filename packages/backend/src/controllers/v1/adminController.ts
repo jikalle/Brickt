@@ -10,6 +10,7 @@ import { sequelize } from '../../db/index.js';
 import { env } from '../../config/env.js';
 import { AuthenticatedRequest } from '../../middleware/auth.js';
 import { sendError } from '../../lib/apiError.js';
+import { upsertOnchainActivity } from '../../lib/onchainActivity.js';
 import { getCrowdfundFeeInfo } from './crowdfundFee.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -322,6 +323,28 @@ const getIntentTableName = (intentType: IntentTableKey): string => {
   if (intentType === 'property') return 'property_intents';
   if (intentType === 'profit') return 'profit_distribution_intents';
   return 'platform_fee_intents';
+};
+
+const recordAdminOnchainActivity = async (input: {
+  adminAddress: string;
+  chainId: number;
+  txHash: string;
+  activityType: string;
+  campaignAddress?: string | null;
+  propertyId?: string | null;
+  metadata?: Record<string, unknown>;
+}) => {
+  await upsertOnchainActivity(sequelize, {
+    chainId: input.chainId,
+    txHash: input.txHash,
+    activityType: input.activityType,
+    status: 'confirmed',
+    actorRole: 'owner',
+    actorAddress: input.adminAddress,
+    campaignAddress: input.campaignAddress ?? null,
+    propertyId: input.propertyId ?? null,
+    metadata: input.metadata ?? null,
+  });
 };
 
 const parseOptionalTimestamp = (value: unknown, field: string): string | null => {
@@ -1460,6 +1483,47 @@ export const listPlatformFeeIntents = async (req: AuthenticatedRequest, res: Res
   }
 };
 
+export const listAdminOnchainActivities = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    requireAdminAddress(req);
+    const limit = parseLimit(req.query.limit);
+    const rows = await sequelize.query(
+      `
+      SELECT
+        tx_hash AS "txHash",
+        activity_type AS "activityType",
+        status,
+        actor_role AS "actorRole",
+        LOWER(actor_address) AS "actorAddress",
+        property_id AS "propertyId",
+        LOWER(campaign_address) AS "campaignAddress",
+        intent_type AS "intentType",
+        intent_id AS "intentId",
+        block_number::text AS "blockNumber",
+        log_index AS "logIndex",
+        submitted_at AS "submittedAt",
+        confirmed_at AS "confirmedAt",
+        indexed_at AS "indexedAt",
+        created_at AS "createdAt",
+        updated_at AS "updatedAt",
+        last_error AS "lastError",
+        metadata_json AS "metadata"
+      FROM onchain_activities
+      ORDER BY created_at DESC
+      LIMIT :limit
+      `,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { limit },
+      }
+    );
+
+    return res.json({ activities: rows });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
 export const retryAdminIntent = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const adminAddress = requireAdminAddress(req);
@@ -2472,7 +2536,7 @@ export const getCampaignLifecyclePreflight = async (req: AuthenticatedRequest, r
 
 export const finalizeCampaign = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    requireAdminAddress(req);
+    const adminAddress = requireAdminAddress(req);
     const chainId = validateChainId(req.body.chainId ?? BASE_SEPOLIA_CHAIN_ID);
     const campaignAddress = normalizeAddress(req.body.campaignAddress?.toString(), 'campaignAddress');
 
@@ -2508,6 +2572,16 @@ export const finalizeCampaign = async (req: AuthenticatedRequest, res: Response)
     if (!receipt || receipt.status !== 1) {
       return sendError(res, 500, 'Finalize transaction reverted', 'internal_error');
     }
+    await recordAdminOnchainActivity({
+      adminAddress,
+      chainId,
+      txHash: tx.hash,
+      activityType: 'campaign-finalize',
+      campaignAddress,
+      metadata: {
+        operatorAddress,
+      },
+    });
 
     const stateRaw = await provider.call({
       to: campaignAddress,
@@ -2530,7 +2604,7 @@ export const finalizeCampaign = async (req: AuthenticatedRequest, res: Response)
 
 export const withdrawCampaignFunds = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    requireAdminAddress(req);
+    const adminAddress = requireAdminAddress(req);
     const chainId = validateChainId(req.body.chainId ?? BASE_SEPOLIA_CHAIN_ID);
     const campaignAddress = normalizeAddress(req.body.campaignAddress?.toString(), 'campaignAddress');
     const recipient = normalizeAddress(req.body.recipient?.toString(), 'recipient');
@@ -2567,6 +2641,17 @@ export const withdrawCampaignFunds = async (req: AuthenticatedRequest, res: Resp
     if (!receipt || receipt.status !== 1) {
       return sendError(res, 500, 'Withdraw transaction reverted', 'internal_error');
     }
+    await recordAdminOnchainActivity({
+      adminAddress,
+      chainId,
+      txHash: tx.hash,
+      activityType: 'campaign-withdraw',
+      campaignAddress,
+      metadata: {
+        operatorAddress,
+        recipient,
+      },
+    });
 
     const stateRaw = await provider.call({
       to: campaignAddress,
@@ -2590,7 +2675,7 @@ export const withdrawCampaignFunds = async (req: AuthenticatedRequest, res: Resp
 
 export const repairCampaignSetup = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    requireAdminAddress(req);
+    const adminAddress = requireAdminAddress(req);
     const chainId = validateChainId(req.body.chainId ?? BASE_SEPOLIA_CHAIN_ID);
     const campaignAddress = normalizeAddress(req.body.campaignAddress?.toString(), 'campaignAddress');
 
@@ -2672,6 +2757,17 @@ export const repairCampaignSetup = async (req: AuthenticatedRequest, res: Respon
     if (!receipt || receipt.status !== 1) {
       return sendError(res, 500, 'setEquityToken transaction reverted', 'internal_error');
     }
+    await recordAdminOnchainActivity({
+      adminAddress,
+      chainId,
+      txHash: tx.hash,
+      activityType: 'campaign-repair-setup',
+      campaignAddress,
+      metadata: {
+        operatorAddress,
+        equityTokenAddress,
+      },
+    });
 
     return res.json({
       campaignAddress,
