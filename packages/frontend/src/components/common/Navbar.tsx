@@ -268,6 +268,11 @@ export default function Navbar() {
                   Admin
                 </Link>
               )}
+              {canViewOwnerConsole && (
+                <Link to="/admin/activities" className="text-slate-300 hover:text-white transition font-medium">
+                  Activity
+                </Link>
+              )}
             </div>
 
             {/* Wallet & Chain Info (Desktop) */}
@@ -339,6 +344,15 @@ export default function Navbar() {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Admin Console
+                </Link>
+              )}
+              {canViewOwnerConsole && (
+                <Link
+                  to="/admin/activities"
+                  className="block px-4 py-2 text-slate-300 hover:text-white transition font-medium rounded hover:bg-slate-800/50"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  Activity
                 </Link>
               )}
               <div className="px-4 py-2 text-xs font-semibold tracking-widest text-slate-400 uppercase">

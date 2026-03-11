@@ -3105,6 +3105,17 @@ export default function OwnerConsole() {
             </div>
           )}
 
+          {canViewOwnerConsole && (
+            <div className="mb-6 flex justify-end">
+              <Link
+                to="/admin/activities"
+                className="inline-flex items-center rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-500/20 transition-all"
+              >
+                View Activity History
+              </Link>
+            </div>
+          )}
+
           {/* Status Messages */}
           {(statusMessage || errorMessage) && (
             <div

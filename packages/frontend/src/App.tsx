@@ -4,6 +4,7 @@ import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
 import InvestorDashboard from './pages/InvestorDashboard'
 import OwnerConsole from './pages/OwnerConsole'
+import AdminActivities from './pages/AdminActivities'
 import Disclosures from './pages/Disclosures'
 import NotFound from './pages/NotFound'
 import Navbar from './components/common/Navbar'
@@ -23,6 +24,7 @@ function App() {
             <Route path="/dashboard" element={<InvestorDashboard />} />
             <Route path="/admin" element={<OwnerConsole />} />
             <Route path="/owner" element={<OwnerConsole />} />
+            <Route path="/admin/activities" element={<AdminActivities />} />
             <Route path="/disclosures" element={<Disclosures />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
