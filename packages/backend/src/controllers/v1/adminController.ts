@@ -683,6 +683,70 @@ const resolveCampaignAddressForProperty = async (
   return campaignAddress;
 };
 
+const assertPropertyIntentCreationAllowed = async (
+  chainId: number,
+  propertyId: string
+): Promise<void> => {
+  const existingIntentRows = await sequelize.query<{
+    id: string;
+    status: string;
+    txHash: string | null;
+  }>(
+    `
+    SELECT
+      id::text AS "id",
+      status,
+      tx_hash AS "txHash"
+    FROM property_intents
+    WHERE chain_id = :chainId
+      AND property_id = :propertyId
+      AND status IN ('pending', 'submitted', 'confirmed')
+    ORDER BY
+      CASE status
+        WHEN 'submitted' THEN 1
+        WHEN 'confirmed' THEN 2
+        ELSE 3
+      END,
+      updated_at DESC,
+      created_at DESC
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { chainId, propertyId },
+    }
+  );
+  const existingIntent = existingIntentRows[0] ?? null;
+  if (existingIntent) {
+    throw new ValidationError(
+      `Property ${propertyId} already has a ${existingIntent.status} deployment intent. Wait for it to finish before creating another one.`,
+      409
+    );
+  }
+
+  const existingPropertyRows = await sequelize.query<{ crowdfundAddress: string | null }>(
+    `
+    SELECT LOWER(crowdfund_contract_address) AS "crowdfundAddress"
+    FROM properties
+    WHERE chain_id = :chainId
+      AND property_id = :propertyId
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: { chainId, propertyId },
+    }
+  );
+  const existingProperty = existingPropertyRows[0] ?? null;
+  if (existingProperty?.crowdfundAddress) {
+    throw new ValidationError(
+      `Property ${propertyId} is already deployed at ${existingProperty.crowdfundAddress}. Duplicate deployment is blocked.`,
+      409
+    );
+  }
+};
+
 const resolveEquityTokenForCampaign = async (
   chainId: number,
   campaignAddress: string
@@ -817,6 +881,7 @@ export const createPropertyIntent = async (req: AuthenticatedRequest, res: Respo
     if (!description) {
       throw new ValidationError('Missing description');
     }
+    await assertPropertyIntentCreationAllowed(chainId, propertyId);
     const mergedGallery = imageUrl && !imageUrls.includes(imageUrl) ? [imageUrl, ...imageUrls] : imageUrls;
 
     const [rows] = await sequelize.query(

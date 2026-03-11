@@ -283,6 +283,89 @@ const markFailed = async (id, message) => {
   );
 };
 
+const markFailedPermanent = async (id, message) => {
+  await sequelize.query(
+    `
+    UPDATE property_intents
+    SET status = 'failed',
+        attempt_count = :maxAttempts,
+        error_message = :message,
+        updated_at = NOW()
+    WHERE id = :id
+    `,
+    {
+      replacements: {
+        id,
+        maxAttempts,
+        message: message.slice(0, 500),
+      },
+    }
+  );
+};
+
+const assertIntentIsDeployable = async (intent) => {
+  const existingIntentRows = await sequelize.query(
+    `
+    SELECT
+      id::text AS "id",
+      status,
+      LOWER(crowdfund_contract_address) AS "crowdfundAddress"
+    FROM property_intents
+    WHERE chain_id = :chainId
+      AND property_id = :propertyId
+      AND id <> :id
+      AND status IN ('submitted', 'confirmed')
+    ORDER BY
+      CASE status
+        WHEN 'submitted' THEN 1
+        WHEN 'confirmed' THEN 2
+        ELSE 3
+      END,
+      updated_at DESC,
+      created_at DESC
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: {
+        id: intent.id,
+        chainId: Number(intent.chainId),
+        propertyId: intent.propertyId,
+      },
+    }
+  );
+  const existingIntent = Array.isArray(existingIntentRows) ? existingIntentRows[0] : null;
+  if (existingIntent) {
+    throw new Error(
+      `duplicate-property-deployment:${intent.propertyId}:existing-intent:${existingIntent.status}:${existingIntent.crowdfundAddress ?? 'unknown'}`
+    );
+  }
+
+  const existingPropertyRows = await sequelize.query(
+    `
+    SELECT LOWER(crowdfund_contract_address) AS "crowdfundAddress"
+    FROM properties
+    WHERE chain_id = :chainId
+      AND property_id = :propertyId
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: {
+        chainId: Number(intent.chainId),
+        propertyId: intent.propertyId,
+      },
+    }
+  );
+  const existingProperty = Array.isArray(existingPropertyRows) ? existingPropertyRows[0] : null;
+  if (existingProperty?.crowdfundAddress) {
+    throw new Error(
+      `duplicate-property-deployment:${intent.propertyId}:existing-property:${existingProperty.crowdfundAddress}`
+    );
+  }
+};
+
 const upsertPropertyRecord = async ({
   propertyId,
   chainId,
@@ -689,6 +772,7 @@ const deployContractsForIntent = async (intent) => {
 
 const processIntent = async (intent) => {
   await markAttempt(intent.id);
+  await assertIntentIsDeployable(intent);
 
   const deployed = await deployContractsForIntent(intent);
   await markSubmitted(intent.id, deployed.txHash, deployed.crowdfundAddress);
@@ -724,7 +808,11 @@ const processOnce = async () => {
       await processIntent(intent);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      await markFailed(intent.id, message);
+      if (message.startsWith('duplicate-property-deployment:')) {
+        await markFailedPermanent(intent.id, message);
+      } else {
+        await markFailed(intent.id, message);
+      }
       const attempts = Number(intent.attemptCount ?? 0) + 1;
       if (attempts >= maxAttempts) {
         console.error(
