@@ -44,6 +44,7 @@ type PropertyRow = {
   conservativeMultiplierBps: number | null;
   baseMultiplierBps: number | null;
   optimisticMultiplierBps: number | null;
+  profitDistributed: boolean;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -122,6 +123,12 @@ export const listProperties = async (req: Request, res: Response) => {
         conservative_multiplier_bps AS "conservativeMultiplierBps",
         base_multiplier_bps AS "baseMultiplierBps",
         optimistic_multiplier_bps AS "optimisticMultiplierBps",
+        EXISTS (
+          SELECT 1
+          FROM profit_deposits pd
+          WHERE pd.property_id = properties.id
+            AND pd.chain_id = :chainId
+        ) AS "profitDistributed",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM properties
@@ -189,6 +196,12 @@ export const getProperty = async (req: Request, res: Response) => {
         conservative_multiplier_bps AS "conservativeMultiplierBps",
         base_multiplier_bps AS "baseMultiplierBps",
         optimistic_multiplier_bps AS "optimisticMultiplierBps",
+        EXISTS (
+          SELECT 1
+          FROM profit_deposits pd
+          WHERE pd.property_id = properties.id
+            AND pd.chain_id = :chainId
+        ) AS "profitDistributed",
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM properties

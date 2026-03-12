@@ -48,6 +48,8 @@ const formatBestFor = (bestFor: string | null | undefined): string | null => {
   return `Best for: ${normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())}`;
 };
 
+const COMPLETED_STAMP_LABEL = 'Profit Shared';
+
 type PropertyFundingPhase = 'NOT_STARTED' | 'ACTIVE' | 'FUNDED' | 'FAILED' | 'ENDED' | 'UNKNOWN';
 
 const getPropertyFundingPhase = (
@@ -305,6 +307,7 @@ export default function Properties() {
                   fundingPhase === 'NOT_STARTED' && campaign?.startTime
                     ? formatCountdown(campaign.startTime, nowMs)
                     : null;
+                const showCompletionStamp = property.profitDistributed && fundingPhase === 'ENDED';
 
                 return (
                   <div
@@ -344,13 +347,26 @@ export default function Properties() {
                       )}
 
                       {/* Status Badge */}
-                      {campaign && (
-                        <div className="absolute top-3 left-3">
+                      <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                        {campaign ? (
                           <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
                             {fundingPhase}
                           </div>
+                        ) : null}
+                        {showCompletionStamp ? (
+                          <div className="rounded-full border border-emerald-300/40 bg-emerald-400/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                            {COMPLETED_STAMP_LABEL}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {showCompletionStamp ? (
+                        <div className="pointer-events-none absolute -right-20 top-8 rotate-[24deg]">
+                          <div className="border border-emerald-100/70 bg-emerald-300/88 px-20 py-2.5 text-xs font-black uppercase tracking-[0.34em] text-slate-950 shadow-[0_14px_40px_rgba(16,185,129,0.35)]">
+                            {COMPLETED_STAMP_LABEL}
+                          </div>
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Content */}

@@ -47,6 +47,7 @@ type PropertyLike = {
   youtubeEmbedUrl?: string | null
   latitude?: number | null
   longitude?: number | null
+  profitDistributed?: boolean
 }
 
 type PropertyPremiumLayoutProps = {
@@ -202,6 +203,8 @@ const formatBestFor = (bestFor: string | null | undefined): string => {
   return normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())
 }
 
+const COMPLETED_STAMP_LABEL = 'Profit Shared'
+
 const toBuilderDataSuffix = (codes: string[]): string | null => {
   if (codes.length === 0) {
     return null
@@ -291,6 +294,7 @@ function PropertyPremiumLayout({
   const selectedImageExists = hasSelectedImage && safeGalleryImages.includes(selectedGalleryImage)
   const primaryImage = selectedImageExists ? selectedGalleryImage : safeGalleryImages[0] ?? null
   const googleMapsUrl = buildGoogleMapsCoordUrl(safeProperty.latitude, safeProperty.longitude)
+  const showCompletionStamp = safeProperty.profitDistributed === true
 
   const onAssetChange = (e: ChangeEvent<HTMLSelectElement>) => {
     setInvestAsset(e.target.value as AssetType)
@@ -322,6 +326,11 @@ function PropertyPremiumLayout({
         <section className="rounded-[32px] border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 p-8">
           <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="min-w-0">
+              {showCompletionStamp ? (
+                <div className="mb-5 inline-flex items-center rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-100">
+                  {COMPLETED_STAMP_LABEL}
+                </div>
+              ) : null}
               <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">{safeProperty.name ?? 'Property'}</h1>
 
               <p className="mt-4 max-w-2xl text-slate-300">{safeProperty.description ?? 'No description available.'}</p>

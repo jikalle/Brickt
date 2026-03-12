@@ -174,6 +174,7 @@ export interface PropertyResponse {
   conservativeMultiplierBps: number | null;
   baseMultiplierBps: number | null;
   optimisticMultiplierBps: number | null;
+  profitDistributed: boolean;
   platformFeeBps: number | null;
   platformFeeRecipient: string | null;
   createdAt: string;
