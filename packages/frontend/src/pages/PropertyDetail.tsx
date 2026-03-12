@@ -476,7 +476,7 @@ function PropertyPremiumLayout({
                 >
                   <option value="USDC">USDC</option>
                   <option value="ETH" disabled={!canSwapOnBaseSepolia}>ETH</option>
-                  <option value="PLATFORM" disabled={!canSwapOnBaseSepolia}>{platformTokenSymbol}</option>
+                  <option value="PLATFORM" disabled>{platformTokenSymbol} (Coming soon)</option>
                 </select>
 
                 <input
@@ -833,6 +833,12 @@ export default function PropertyDetail() {
       clearInterval(timer)
     }
   }, [connectedAddress, property?.crowdfundAddress])
+
+  useEffect(() => {
+    if (investAsset === 'PLATFORM') {
+      setInvestAsset('USDC')
+    }
+  }, [investAsset])
 
   useEffect(() => {
     let cancelled = false
