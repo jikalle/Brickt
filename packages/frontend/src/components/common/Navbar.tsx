@@ -6,7 +6,8 @@ import { RootState } from '../../store';
 import { setUser, setWalletAddress } from '../../store/slices/userSlice';
 import { env } from '../../config/env';
 import { signInWithBaseAccount } from '../../lib/baseAccount';
-import { getAuthNonce, loginWithWallet } from '../../lib/api';
+import { getAuthNonce, loginWithWallet, requestTestnetFunds, type FaucetRequestResponse } from '../../lib/api';
+import TxHashLink from './TxHashLink';
 
 // Inline SVG Icons
 const Menu = ({ className }: { className: string }) => (
@@ -145,9 +146,14 @@ export default function Navbar() {
   const { connectAsync, connectors, isLoading, pendingConnector } = useConnect();
   const { disconnect } = useDisconnect();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isFaucetModalOpen, setIsFaucetModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [connectError, setConnectError] = useState('');
   const [isSigningWithBase, setIsSigningWithBase] = useState(false);
+  const [faucetToken, setFaucetToken] = useState<'eth' | 'usdc'>('eth');
+  const [isRequestingFaucet, setIsRequestingFaucet] = useState(false);
+  const [faucetError, setFaucetError] = useState('');
+  const [faucetResult, setFaucetResult] = useState<FaucetRequestResponse | null>(null);
 
   const getChainName = (chainId: number) => {
     switch (chainId) {
@@ -180,11 +186,40 @@ export default function Navbar() {
     setIsMobileMenuOpen(false);
   };
 
+  const handleFaucetClick = () => {
+    setFaucetError('');
+    setFaucetResult(null);
+    setIsFaucetModalOpen(true);
+    setIsMobileMenuOpen(false);
+  };
+
   const handleDisconnectClick = () => {
     disconnect();
     dispatch(setWalletAddress(null));
     setConnectError('');
     setIsMobileMenuOpen(false);
+  };
+
+  const handleRequestFaucet = async () => {
+    if (!walletAddress) {
+      setFaucetError('Connect a wallet before requesting testnet funds.');
+      return;
+    }
+
+    setIsRequestingFaucet(true);
+    setFaucetError('');
+    setFaucetResult(null);
+    try {
+      const result = await requestTestnetFunds({
+        address: walletAddress,
+        token: faucetToken,
+      });
+      setFaucetResult(result);
+    } catch (error) {
+      setFaucetError(error instanceof Error ? error.message : 'Failed to request testnet funds');
+    } finally {
+      setIsRequestingFaucet(false);
+    }
   };
 
   const handleConnectorSelect = async (connectorId: string) => {
@@ -282,6 +317,12 @@ export default function Navbar() {
               </div>
               <div className="w-px h-5 bg-slate-700/50" />
               <button
+                onClick={handleFaucetClick}
+                className="px-4 py-2.5 text-slate-300 border border-slate-700/50 rounded-lg hover:border-slate-600 hover:bg-slate-800/50 transition"
+              >
+                Faucet
+              </button>
+              <button
                 onClick={handleConnectClick}
                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-emerald-500/20 transition-all"
               >
@@ -300,6 +341,12 @@ export default function Navbar() {
 
             {/* Mobile Menu Button */}
             <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={handleFaucetClick}
+                className="px-3 py-2 text-slate-300 border border-slate-700/50 rounded-lg text-sm hover:border-slate-600 hover:bg-slate-800/50 transition"
+              >
+                Faucet
+              </button>
               <button
                 onClick={handleConnectClick}
                 className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white font-semibold rounded-lg text-sm hover:shadow-lg hover:shadow-emerald-500/20 transition"
@@ -358,6 +405,14 @@ export default function Navbar() {
               <div className="px-4 py-2 text-xs font-semibold tracking-widest text-slate-400 uppercase">
                 {getChainName(activeChainId)}
               </div>
+              <div className="px-4 pt-2">
+                <button
+                  onClick={handleFaucetClick}
+                  className="w-full px-4 py-2 text-slate-300 border border-slate-700/50 rounded-lg hover:border-slate-600 hover:bg-slate-800/50 transition text-sm"
+                >
+                  Open Faucet
+                </button>
+              </div>
               {isConnected && (
                 <div className="px-4 pt-2">
                   <button
@@ -372,6 +427,82 @@ export default function Navbar() {
           )}
         </div>
       </nav>
+
+      {/* Faucet Modal */}
+      {isFaucetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-4">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900/95 backdrop-blur border border-slate-700/50 p-8 shadow-2xl shadow-black/50 animate-in fade-in zoom-in-95">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Testnet Faucet</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">Request Base Sepolia funds</h3>
+              </div>
+              <button
+                onClick={() => setIsFaucetModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="mb-6 text-sm text-slate-300 leading-relaxed">
+              Request a small ETH or USDC test balance for the connected wallet. Cooldowns apply after successful requests.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Wallet</p>
+                <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 px-4 py-3 text-sm text-white">
+                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Connect a wallet first'}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Asset
+                </label>
+                <select
+                  value={faucetToken}
+                  onChange={(event) => setFaucetToken(event.target.value as 'eth' | 'usdc')}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white"
+                  disabled={isRequestingFaucet}
+                >
+                  <option value="eth">ETH</option>
+                  <option value="usdc">USDC</option>
+                </select>
+              </div>
+
+              {faucetError ? (
+                <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3">
+                  <p className="text-sm text-red-200">{faucetError}</p>
+                </div>
+              ) : null}
+
+              {faucetResult ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                  <p className="text-sm text-emerald-200">
+                    Faucet request submitted for {faucetResult.token.toUpperCase()}.
+                  </p>
+                  {faucetResult.transactionHash ? (
+                    <div className="mt-3">
+                      <TxHashLink txHash={faucetResult.transactionHash} compact />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void handleRequestFaucet()}
+                disabled={!walletAddress || isRequestingFaucet}
+                className="w-full rounded-lg bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRequestingFaucet ? 'Requesting...' : `Request ${faucetToken.toUpperCase()}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Connect Wallet Modal */}
       {isConnectModalOpen && (
