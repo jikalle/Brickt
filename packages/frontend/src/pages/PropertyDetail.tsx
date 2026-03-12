@@ -14,22 +14,24 @@ import {
 import { useAccount } from 'wagmi'
 import type { ChangeEvent, ReactNode } from 'react'
 import {
+  fetchAssetUsdcQuote,
   fetchCampaign,
   fetchEthUsdcQuote,
   fetchProperty,
   fetchPropertyEquityClaims,
   fetchPropertyProfitClaims,
+  type AssetUsdcQuoteResponse,
   type CampaignResponse,
   type EthUsdcQuoteResponse,
   type PropertyResponse,
 } from '../lib/api'
-import { BASE_SEPOLIA_USDC } from '../config/tokens.config'
+import { BASE_SEPOLIA_USDC, getBaseSepoliaPlatformToken } from '../config/tokens.config'
 import { env } from '../config/env'
 import { emitPortfolioActivity } from '../lib/portfolioActivity'
 import TxHashLink from '../components/common/TxHashLink'
 import { extractTxHashes } from '../lib/txHash'
 
-type AssetType = 'USDC' | 'ETH'
+type AssetType = 'USDC' | 'ETH' | 'PLATFORM'
 type CampaignPhase = 'NOT_STARTED' | 'ACTIVE' | 'FAILED' | 'ENDED' | 'UNKNOWN'
 
 type EthereumProvider = {
@@ -74,10 +76,11 @@ type PropertyPremiumLayoutProps = {
   quoteError?: string
   quotedUsdcOutBaseUnits?: bigint | null
   minUsdcOutBaseUnits?: bigint | null
-  isQuotingEth?: boolean
+  isQuotingSwapAsset?: boolean
   txInFlight?: boolean
   walletAvailable?: boolean
-  canSwapEthOnBaseSepolia?: boolean
+  canSwapOnBaseSepolia?: boolean
+  platformTokenSymbol?: string
   canInvest?: boolean
   canClaimEquity?: boolean
   canClaimProfit?: boolean
@@ -126,6 +129,7 @@ const ERC20_ABI = [
   'function approve(address spender, uint256 value) external returns (bool)',
   'function balanceOf(address account) external view returns (uint256)',
   'function allowance(address owner, address spender) external view returns (uint256)',
+  'function symbol() external view returns (string)',
 ]
 
 const PROFIT_DISTRIBUTOR_ABI = [
@@ -258,10 +262,11 @@ function PropertyPremiumLayout({
   quoteError = '',
   quotedUsdcOutBaseUnits = null,
   minUsdcOutBaseUnits = null,
-  isQuotingEth = false,
+  isQuotingSwapAsset = false,
   txInFlight = false,
   walletAvailable = false,
-  canSwapEthOnBaseSepolia = false,
+  canSwapOnBaseSepolia = false,
+  platformTokenSymbol = 'BRICKT',
   canInvest = false,
   canClaimEquity = false,
   canClaimProfit = false,
@@ -470,20 +475,27 @@ function PropertyPremiumLayout({
                   disabled={txInFlight}
                 >
                   <option value="USDC">USDC</option>
-                  <option value="ETH" disabled={!canSwapEthOnBaseSepolia}>ETH</option>
+                  <option value="ETH" disabled={!canSwapOnBaseSepolia}>ETH</option>
+                  <option value="PLATFORM" disabled={!canSwapOnBaseSepolia}>{platformTokenSymbol}</option>
                 </select>
 
                 <input
                   type="text"
-                  value={investAsset === 'ETH' ? amountEth : amountUsdc}
+                  value={investAsset === 'USDC' ? amountUsdc : amountEth}
                   onChange={onAmountChange}
-                  placeholder={investAsset === 'ETH' ? 'Amount (ETH)' : 'Amount (USDC)'}
+                  placeholder={
+                    investAsset === 'USDC'
+                      ? 'Amount (USDC)'
+                      : investAsset === 'ETH'
+                        ? 'Amount (ETH)'
+                        : `Amount (${platformTokenSymbol})`
+                  }
                   inputMode="decimal"
                   className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
                   disabled={txInFlight}
                 />
 
-                {investAsset === 'ETH' ? (
+                {investAsset !== 'USDC' ? (
                   <>
                     <input
                       type="text"
@@ -498,7 +510,7 @@ function PropertyPremiumLayout({
                       <p>
                         Estimated USDC out:{' '}
                         <span className="font-semibold text-white">
-                          {isQuotingEth
+                          {isQuotingSwapAsset
                             ? 'Quoting...'
                             : quotedUsdcOutBaseUnits
                               ? `${formatUsdcUnits(quotedUsdcOutBaseUnits)} USDC`
@@ -535,11 +547,11 @@ function PropertyPremiumLayout({
                     !walletAvailable ||
                     txInFlight ||
                     !canInvest ||
-                    (investAsset === 'ETH' && (isQuotingEth || !quotedUsdcOutBaseUnits || !minUsdcOutBaseUnits))
+                    (investAsset !== 'USDC' && (isQuotingSwapAsset || !quotedUsdcOutBaseUnits || !minUsdcOutBaseUnits))
                   }
                   className="w-full rounded-xl bg-cyan-400 py-4 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {txInFlight ? 'Processing...' : investAsset === 'ETH' ? 'Swap & Invest' : 'Invest'}
+                  {txInFlight ? 'Processing...' : investAsset !== 'USDC' ? 'Swap & Invest' : 'Invest'}
                 </button>
               </div>
             </Section>
@@ -615,9 +627,9 @@ export default function PropertyDetail() {
   const [investAsset, setInvestAsset] = useState<AssetType>('USDC')
 
   const [quotedUsdcOutBaseUnits, setQuotedUsdcOutBaseUnits] = useState<bigint | null>(null)
-  const [ethQuote, setEthQuote] = useState<EthUsdcQuoteResponse | null>(null)
+  const [swapQuote, setSwapQuote] = useState<AssetUsdcQuoteResponse | EthUsdcQuoteResponse | null>(null)
   const [quoteError, setQuoteError] = useState('')
-  const [isQuotingEth, setIsQuotingEth] = useState(false)
+  const [isQuotingSwapAsset, setIsQuotingSwapAsset] = useState(false)
 
   const [txStatus, setTxStatus] = useState('')
   const [txError, setTxError] = useState('')
@@ -629,6 +641,7 @@ export default function PropertyDetail() {
   const [claimableProfitBaseUnits, setClaimableProfitBaseUnits] = useState<bigint | null>(null)
   const [claimableEquityBaseUnits, setClaimableEquityBaseUnits] = useState<bigint | null>(null)
   const [claimableEquityError, setClaimableEquityError] = useState('')
+  const platformToken = useMemo(() => getBaseSepoliaPlatformToken(), [])
   const [nowMs, setNowMs] = useState(Date.now())
 
   const builderDataSuffix = useMemo(() => toBuilderDataSuffix(env.BASE_BUILDER_CODES), [])
@@ -824,64 +837,80 @@ export default function PropertyDetail() {
   useEffect(() => {
     let cancelled = false
 
-    if (investAsset !== 'ETH') {
+    if (investAsset === 'USDC') {
       setQuoteError('')
       setQuotedUsdcOutBaseUnits(null)
-      setEthQuote(null)
-      setIsQuotingEth(false)
+      setSwapQuote(null)
+      setIsQuotingSwapAsset(false)
       return
     }
 
     if (!env.BASE_SEPOLIA_SWAP_ROUTER) {
-      setQuoteError('ETH swap router is not configured.')
+      setQuoteError('Swap router is not configured.')
       setQuotedUsdcOutBaseUnits(null)
-      setEthQuote(null)
+      setSwapQuote(null)
+      return
+    }
+
+    if (investAsset === 'PLATFORM' && !platformToken) {
+      setQuoteError('Platform token is not configured.')
+      setQuotedUsdcOutBaseUnits(null)
+      setSwapQuote(null)
       return
     }
 
     if (!Number.isFinite(Number(amountEth)) || Number(amountEth) <= 0) {
       setQuoteError('')
       setQuotedUsdcOutBaseUnits(null)
-      setEthQuote(null)
-      setIsQuotingEth(false)
+      setSwapQuote(null)
+      setIsQuotingSwapAsset(false)
       return
     }
 
-    const quoteEthToUsdc = async () => {
+    const quoteAssetToUsdc = async () => {
       try {
-        setIsQuotingEth(true)
+        setIsQuotingSwapAsset(true)
         setQuoteError('')
-        const quote = await fetchEthUsdcQuote({
-          amountEth,
-          slippagePercent,
-          usdcAddress: (crowdfundUsdcAddress || BASE_SEPOLIA_USDC.address).toLowerCase(),
-        })
+        const quote =
+          investAsset === 'ETH'
+            ? await fetchEthUsdcQuote({
+                amountEth,
+                slippagePercent,
+                usdcAddress: (crowdfundUsdcAddress || BASE_SEPOLIA_USDC.address).toLowerCase(),
+              })
+            : await fetchAssetUsdcQuote({
+                tokenInAddress: platformToken!.address,
+                tokenInDecimals: platformToken!.decimals,
+                amountIn: amountEth,
+                slippagePercent,
+                usdcAddress: (crowdfundUsdcAddress || BASE_SEPOLIA_USDC.address).toLowerCase(),
+              })
         if (!cancelled) {
-          setEthQuote(quote)
+          setSwapQuote(quote)
           setQuotedUsdcOutBaseUnits(BigInt(quote.estimatedUsdcBaseUnits))
         }
       } catch (error) {
         if (!cancelled) {
-          setEthQuote(null)
+          setSwapQuote(null)
           setQuotedUsdcOutBaseUnits(null)
           setQuoteError(error instanceof Error ? error.message : 'Unable to estimate USDC output')
         }
       } finally {
         if (!cancelled) {
-          setIsQuotingEth(false)
+          setIsQuotingSwapAsset(false)
         }
       }
     }
 
     const timer = setTimeout(() => {
-      void quoteEthToUsdc()
+      void quoteAssetToUsdc()
     }, 350)
 
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [amountEth, crowdfundUsdcAddress, investAsset, slippagePercent])
+  }, [amountEth, crowdfundUsdcAddress, investAsset, platformToken, slippagePercent])
 
   const campaignRaisedBaseUnits = useMemo(
     () => BigInt(campaign?.raisedUsdcBaseUnits ?? '0'),
@@ -939,7 +968,7 @@ export default function PropertyDetail() {
   const canClaimRefund = campaignPhase === 'FAILED'
   const canClaimProfit = claimableProfitBaseUnits !== null && claimableProfitBaseUnits > 0n
   const canClaimEquity = claimableEquityBaseUnits !== null && claimableEquityBaseUnits > 0n
-  const canSwapEthOnBaseSepolia = Boolean(env.BASE_SEPOLIA_SWAP_ROUTER)
+  const canSwapOnBaseSepolia = Boolean(env.BASE_SEPOLIA_SWAP_ROUTER)
 
   const claimProfitUnavailableMessage =
     claimableProfitBaseUnits === null ? 'Unable to read claimable profit right now.' : 'No claimable profit yet.'
@@ -982,14 +1011,14 @@ export default function PropertyDetail() {
   }, [normalizedSlippagePercent])
 
   const minUsdcOutBaseUnits = useMemo(() => {
-    if (ethQuote?.minUsdcOutBaseUnits) {
-      const quoted = BigInt(ethQuote.minUsdcOutBaseUnits)
+    if (swapQuote?.minUsdcOutBaseUnits) {
+      const quoted = BigInt(swapQuote.minUsdcOutBaseUnits)
       if (quoted > 0n) return quoted
     }
     if (!quotedUsdcOutBaseUnits || quotedUsdcOutBaseUnits <= 0n) return null
     const minOut = (quotedUsdcOutBaseUnits * BigInt(10_000 - slippageBps)) / 10_000n
     return minOut > 0n ? minOut : null
-  }, [ethQuote?.minUsdcOutBaseUnits, quotedUsdcOutBaseUnits, slippageBps])
+  }, [quotedUsdcOutBaseUnits, slippageBps, swapQuote?.minUsdcOutBaseUnits])
 
   const txInFlight = isInvesting || isClaimingEquity || isClaimingProfit || isClaimingRefund
   const txHashesInStatus = useMemo(() => extractTxHashes(txStatus), [txStatus])
@@ -1144,7 +1173,7 @@ export default function PropertyDetail() {
     }
   }
 
-  const handleInvestWithEth = async () => {
+  const handleInvestWithSwapAsset = async () => {
     setTxError('')
     setTxStatus('')
 
@@ -1156,20 +1185,24 @@ export default function PropertyDetail() {
       setTxError(investUnavailableMessage)
       return
     }
-    if (!canSwapEthOnBaseSepolia) {
-      setTxError('ETH investment is not configured. Set VITE_BASE_SEPOLIA_SWAP_ROUTER.')
+    if (!canSwapOnBaseSepolia) {
+      setTxError('Swap investment is not configured. Set VITE_BASE_SEPOLIA_SWAP_ROUTER.')
       return
     }
     if (!Number.isFinite(normalizedEthAmount) || normalizedEthAmount <= 0) {
-      setTxError('Enter a valid ETH amount greater than 0.')
+      setTxError(`Enter a valid ${investAsset === 'ETH' ? 'ETH' : platformToken?.symbol || 'token'} amount greater than 0.`)
       return
     }
     if (!minUsdcOutBaseUnits || minUsdcOutBaseUnits <= 0n) {
       setTxError('Unable to derive minimum USDC out from quote. Wait for live quote and retry.')
       return
     }
-    if (!ethQuote) {
-      setTxError('Missing live quote for ETH investment. Wait for quote and retry.')
+    if (!swapQuote) {
+      setTxError('Missing live quote for swap investment. Wait for quote and retry.')
+      return
+    }
+    if (investAsset === 'PLATFORM' && !platformToken) {
+      setTxError('Platform token is not configured.')
       return
     }
 
@@ -1187,24 +1220,29 @@ export default function PropertyDetail() {
       const signer = await provider.getSigner()
       const signerAddress = await signer.getAddress()
 
-      const ethAmountWei = parseUnits(amountEth, 18)
-      const quotedAmountInWei = BigInt(ethQuote.amountInWei)
-      if (quotedAmountInWei !== ethAmountWei) {
-        throw new Error('Quote is stale for current ETH amount. Wait for refreshed quote and retry.')
+      const inputDecimals = investAsset === 'ETH' ? 18 : platformToken!.decimals
+      const inputAmountBaseUnits = parseUnits(amountEth, inputDecimals)
+      const quotedAmountInBaseUnits = BigInt(
+        'amountInBaseUnits' in swapQuote ? swapQuote.amountInBaseUnits : swapQuote.amountInWei
+      )
+      if (quotedAmountInBaseUnits !== inputAmountBaseUnits) {
+        throw new Error('Quote is stale for current amount. Wait for refreshed quote and retry.')
       }
 
-      const nativeBalanceWei = await provider.getBalance(signerAddress)
-      if (ethAmountWei > nativeBalanceWei) {
-        throw new Error(
-          `Insufficient ETH balance for swap input. Requested ${formatUnits(ethAmountWei, 18)} ETH but wallet has ${formatUnits(nativeBalanceWei, 18)} ETH.`
-        )
+      if (investAsset === 'ETH') {
+        const nativeBalanceWei = await provider.getBalance(signerAddress)
+        if (inputAmountBaseUnits > nativeBalanceWei) {
+          throw new Error(
+            `Insufficient ETH balance for swap input. Requested ${formatUnits(inputAmountBaseUnits, 18)} ETH but wallet has ${formatUnits(nativeBalanceWei, 18)} ETH.`
+          )
+        }
       }
 
       const crowdfund = new Contract(property.crowdfundAddress, CROWDFUND_ABI, signer)
       const requiredUsdcAddress = ((await crowdfund.usdcToken()) as string).toLowerCase()
-      if (ethQuote.usdcAddress.toLowerCase() !== requiredUsdcAddress) {
+      if (swapQuote.usdcAddress.toLowerCase() !== requiredUsdcAddress) {
         throw new Error(
-          `Quote token mismatch. Quote used ${ethQuote.usdcAddress}, but crowdfund requires ${requiredUsdcAddress}.`
+          `Quote token mismatch. Quote used ${swapQuote.usdcAddress}, but crowdfund requires ${requiredUsdcAddress}.`
         )
       }
 
@@ -1214,91 +1252,18 @@ export default function PropertyDetail() {
 
       const usdcBefore = BigInt(await usdc.balanceOf(signerAddress))
       const deadline = Math.floor(Date.now() / 1000) + 20 * 60
-      const executionFeeTiers = Array.from(new Set([ethQuote.feeTier, ...swapFeeCandidates]))
+      const executionFeeTiers = Array.from(new Set([swapQuote.feeTier, ...swapFeeCandidates]))
+      const tokenInAddress = investAsset === 'ETH' ? env.BASE_SEPOLIA_WETH : platformToken!.address
+      const inputSymbol = investAsset === 'ETH' ? 'ETH' : platformToken!.symbol
 
       let swapSucceeded = false
       let lastNativeSwapError: unknown = null
       let lastWrappedSwapError: unknown = null
 
-      for (const feeTier of executionFeeTiers) {
-        try {
-          setTxStatus(`Swapping ETH -> USDC (native route, fee tier ${feeTier})...`)
-          try {
-            const tx = await sendContractTransaction(
-              signer,
-              swapRouter,
-              'exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))',
-              [
-                {
-                  tokenIn: env.BASE_SEPOLIA_WETH,
-                  tokenOut: requiredUsdcAddress,
-                  fee: feeTier,
-                  recipient: signerAddress,
-                  amountIn: ethAmountWei,
-                  amountOutMinimum: minUsdcOutBaseUnits,
-                  sqrtPriceLimitX96: 0,
-                },
-              ],
-              { value: ethAmountWei }
-            )
-            await tx.wait()
-          } catch {
-            const tx = await sendContractTransaction(
-              signer,
-              swapRouter,
-              'exactInputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))',
-              [
-                {
-                  tokenIn: env.BASE_SEPOLIA_WETH,
-                  tokenOut: requiredUsdcAddress,
-                  fee: feeTier,
-                  recipient: signerAddress,
-                  deadline,
-                  amountIn: ethAmountWei,
-                  amountOutMinimum: minUsdcOutBaseUnits,
-                  sqrtPriceLimitX96: 0,
-                },
-              ],
-              { value: ethAmountWei }
-            )
-            await tx.wait()
-          }
-          swapSucceeded = true
-          break
-        } catch (error) {
-          lastNativeSwapError = error
-        }
-      }
-
-      if (!swapSucceeded) {
-        setTxStatus('Native swap route failed. Wrapping ETH to WETH...')
-        try {
-          const wrapTx = await sendContractTransaction(signer, weth, 'deposit', [], { value: ethAmountWei })
-          await wrapTx.wait()
-        } catch (depositError) {
-          try {
-            const wrapViaReceiveTx = await signer.sendTransaction({ to: env.BASE_SEPOLIA_WETH, value: ethAmountWei })
-            await wrapViaReceiveTx.wait()
-          } catch (receiveWrapError) {
-            throw new Error(
-              `Native swap route failed: ${
-                lastNativeSwapError instanceof Error ? lastNativeSwapError.message : String(lastNativeSwapError)
-              }. WETH wrap failed. deposit() error: ${
-                depositError instanceof Error ? depositError.message : String(depositError)
-              }. receive() error: ${
-                receiveWrapError instanceof Error ? receiveWrapError.message : String(receiveWrapError)
-              }`
-            )
-          }
-        }
-
-        setTxStatus('Approving router for wrapped swap...')
-        const approveRouterTx = await sendContractTransaction(signer, weth, 'approve', [env.BASE_SEPOLIA_SWAP_ROUTER, ethAmountWei])
-        await approveRouterTx.wait()
-
+      if (investAsset === 'ETH') {
         for (const feeTier of executionFeeTiers) {
           try {
-            setTxStatus(`Swapping ETH -> USDC (wrapped route, fee tier ${feeTier})...`)
+            setTxStatus(`Swapping ETH -> USDC (native route, fee tier ${feeTier})...`)
             try {
               const tx = await sendContractTransaction(
                 signer,
@@ -1306,11 +1271,155 @@ export default function PropertyDetail() {
                 'exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))',
                 [
                   {
-                    tokenIn: env.BASE_SEPOLIA_WETH,
+                    tokenIn: tokenInAddress,
                     tokenOut: requiredUsdcAddress,
                     fee: feeTier,
                     recipient: signerAddress,
-                    amountIn: ethAmountWei,
+                    amountIn: inputAmountBaseUnits,
+                    amountOutMinimum: minUsdcOutBaseUnits,
+                    sqrtPriceLimitX96: 0,
+                  },
+                ]
+                ,
+                { value: inputAmountBaseUnits }
+              )
+              await tx.wait()
+            } catch {
+              const tx = await sendContractTransaction(
+                signer,
+                swapRouter,
+                'exactInputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))',
+                [
+                  {
+                    tokenIn: tokenInAddress,
+                    tokenOut: requiredUsdcAddress,
+                    fee: feeTier,
+                    recipient: signerAddress,
+                    deadline,
+                    amountIn: inputAmountBaseUnits,
+                    amountOutMinimum: minUsdcOutBaseUnits,
+                    sqrtPriceLimitX96: 0,
+                  },
+                ]
+                ,
+                { value: inputAmountBaseUnits }
+              )
+              await tx.wait()
+            }
+            swapSucceeded = true
+            break
+          } catch (error) {
+            lastNativeSwapError = error
+          }
+        }
+        if (!swapSucceeded) {
+          setTxStatus('Native swap route failed. Wrapping ETH to WETH...')
+          try {
+            const wrapTx = await sendContractTransaction(signer, weth, 'deposit', [], { value: inputAmountBaseUnits })
+            await wrapTx.wait()
+          } catch (depositError) {
+            try {
+              const wrapViaReceiveTx = await signer.sendTransaction({ to: env.BASE_SEPOLIA_WETH, value: inputAmountBaseUnits })
+              await wrapViaReceiveTx.wait()
+            } catch (receiveWrapError) {
+              throw new Error(
+                `Native swap route failed: ${
+                  lastNativeSwapError instanceof Error ? lastNativeSwapError.message : String(lastNativeSwapError)
+                }. WETH wrap failed. deposit() error: ${
+                  depositError instanceof Error ? depositError.message : String(depositError)
+                }. receive() error: ${
+                  receiveWrapError instanceof Error ? receiveWrapError.message : String(receiveWrapError)
+                }`
+              )
+            }
+          }
+
+          setTxStatus('Approving router for wrapped swap...')
+          const approveRouterTx = await sendContractTransaction(signer, weth, 'approve', [env.BASE_SEPOLIA_SWAP_ROUTER, inputAmountBaseUnits])
+          await approveRouterTx.wait()
+
+          for (const feeTier of executionFeeTiers) {
+            try {
+              setTxStatus(`Swapping ETH -> USDC (wrapped route, fee tier ${feeTier})...`)
+              try {
+                const tx = await sendContractTransaction(
+                  signer,
+                  swapRouter,
+                  'exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))',
+                  [
+                    {
+                      tokenIn: tokenInAddress,
+                      tokenOut: requiredUsdcAddress,
+                      fee: feeTier,
+                      recipient: signerAddress,
+                      amountIn: inputAmountBaseUnits,
+                      amountOutMinimum: minUsdcOutBaseUnits,
+                      sqrtPriceLimitX96: 0,
+                    },
+                  ]
+                )
+                await tx.wait()
+              } catch {
+                const tx = await sendContractTransaction(
+                  signer,
+                  swapRouter,
+                  'exactInputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))',
+                  [
+                    {
+                      tokenIn: tokenInAddress,
+                      tokenOut: requiredUsdcAddress,
+                      fee: feeTier,
+                      recipient: signerAddress,
+                      deadline,
+                      amountIn: inputAmountBaseUnits,
+                      amountOutMinimum: minUsdcOutBaseUnits,
+                      sqrtPriceLimitX96: 0,
+                    },
+                  ]
+                )
+                await tx.wait()
+              }
+              swapSucceeded = true
+              break
+            } catch (error) {
+              lastWrappedSwapError = error
+            }
+          }
+        }
+      } else {
+        const inputToken = new Contract(tokenInAddress, ERC20_ABI, signer)
+        const balance = BigInt(await inputToken.balanceOf(signerAddress))
+        if (balance < inputAmountBaseUnits) {
+          throw new Error(
+            `Insufficient ${inputSymbol} balance for swap input. Requested ${formatUnits(inputAmountBaseUnits, inputDecimals)} ${inputSymbol} but wallet has ${formatUnits(balance, inputDecimals)} ${inputSymbol}.`
+          )
+        }
+        const allowance = BigInt(await inputToken.allowance(signerAddress, env.BASE_SEPOLIA_SWAP_ROUTER))
+        if (allowance < inputAmountBaseUnits) {
+          setTxStatus(`Approving router for ${inputSymbol} swap...`)
+          const approveRouterTx = await sendContractTransaction(
+            signer,
+            inputToken,
+            'approve',
+            [env.BASE_SEPOLIA_SWAP_ROUTER, inputAmountBaseUnits]
+          )
+          await approveRouterTx.wait()
+        }
+        for (const feeTier of executionFeeTiers) {
+          try {
+            setTxStatus(`Swapping ${inputSymbol} -> USDC (fee tier ${feeTier})...`)
+            try {
+              const tx = await sendContractTransaction(
+                signer,
+                swapRouter,
+                'exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))',
+                [
+                  {
+                    tokenIn: tokenInAddress,
+                    tokenOut: requiredUsdcAddress,
+                    fee: feeTier,
+                    recipient: signerAddress,
+                    amountIn: inputAmountBaseUnits,
                     amountOutMinimum: minUsdcOutBaseUnits,
                     sqrtPriceLimitX96: 0,
                   },
@@ -1324,12 +1433,12 @@ export default function PropertyDetail() {
                 'exactInputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))',
                 [
                   {
-                    tokenIn: env.BASE_SEPOLIA_WETH,
+                    tokenIn: tokenInAddress,
                     tokenOut: requiredUsdcAddress,
                     fee: feeTier,
                     recipient: signerAddress,
                     deadline,
-                    amountIn: ethAmountWei,
+                    amountIn: inputAmountBaseUnits,
                     amountOutMinimum: minUsdcOutBaseUnits,
                     sqrtPriceLimitX96: 0,
                   },
@@ -1347,9 +1456,9 @@ export default function PropertyDetail() {
 
       if (!swapSucceeded) {
         throw new Error(
-          `ETH->USDC swap failed on fee tiers ${swapFeeCandidates.join(', ')}. Native route error: ${
+          `${inputSymbol}->USDC swap failed on fee tiers ${swapFeeCandidates.join(', ')}. Native route error: ${
             lastNativeSwapError instanceof Error ? lastNativeSwapError.message : String(lastNativeSwapError)
-          }. Wrapped route error: ${
+          }. Secondary route error: ${
             lastWrappedSwapError instanceof Error ? lastWrappedSwapError.message : String(lastWrappedSwapError)
           }.`
         )
@@ -1369,7 +1478,7 @@ export default function PropertyDetail() {
       const investTx = await sendContractTransaction(signer, crowdfund, 'invest', [receivedUsdc])
       await investTx.wait()
 
-      setTxStatus(`ETH swap + investment confirmed: ${investTx.hash}`)
+      setTxStatus(`${inputSymbol} swap + investment confirmed: ${investTx.hash}`)
       setCampaign((previous) => {
         if (!previous) return previous
         const currentRaised = BigInt(previous.raisedUsdcBaseUnits || '0')
@@ -1391,18 +1500,18 @@ export default function PropertyDetail() {
         .catch(() => undefined)
 
       setAmountEth('')
-      setEthQuote(null)
+      setSwapQuote(null)
       setQuotedUsdcOutBaseUnits(null)
     } catch (error) {
-      setTxError(error instanceof Error ? error.message : 'ETH swap and investment transaction failed')
+      setTxError(error instanceof Error ? error.message : 'Swap and investment transaction failed')
     } finally {
       setIsInvesting(false)
     }
   }
 
   const handleInvest = async () => {
-    if (investAsset === 'ETH') {
-      await handleInvestWithEth()
+    if (investAsset !== 'USDC') {
+      await handleInvestWithSwapAsset()
       return
     }
     await handleInvestWithUsdc()
@@ -1546,10 +1655,11 @@ export default function PropertyDetail() {
       quoteError={quoteError}
       quotedUsdcOutBaseUnits={quotedUsdcOutBaseUnits}
       minUsdcOutBaseUnits={minUsdcOutBaseUnits}
-      isQuotingEth={isQuotingEth}
+      isQuotingSwapAsset={isQuotingSwapAsset}
       txInFlight={txInFlight}
       walletAvailable={walletAvailable}
-      canSwapEthOnBaseSepolia={canSwapEthOnBaseSepolia}
+      canSwapOnBaseSepolia={canSwapOnBaseSepolia}
+      platformTokenSymbol={platformToken?.symbol || 'BRICKT'}
       canInvest={canInvest}
       canClaimEquity={canClaimEquity}
       canClaimProfit={canClaimProfit}

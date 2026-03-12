@@ -295,6 +295,22 @@ export interface EthUsdcQuoteResponse {
   source: string;
 }
 
+export interface AssetUsdcQuoteResponse {
+  chainId: number;
+  usdcAddress: string;
+  tokenInAddress: string;
+  tokenInDecimals: number;
+  amountIn: string;
+  amountInBaseUnits: string;
+  estimatedUsdcBaseUnits: string;
+  estimatedUsdc: string;
+  minUsdcOutBaseUnits: string;
+  minUsdcOut: string;
+  slippageBps: number;
+  feeTier: number;
+  source: string;
+}
+
 export interface AdminMetricsResponse {
   timestamp: string;
   uptimeSeconds: number;
@@ -1439,4 +1455,32 @@ export async function fetchEthUsdcQuote(payload: {
     throw new Error('Invalid quote response');
   }
   return data.quote as EthUsdcQuoteResponse;
+}
+
+export async function fetchAssetUsdcQuote(payload: {
+  tokenInAddress: string;
+  tokenInDecimals: number;
+  amountIn: string;
+  slippagePercent: string;
+  usdcAddress?: string;
+}): Promise<AssetUsdcQuoteResponse> {
+  const params = new URLSearchParams({
+    tokenInAddress: payload.tokenInAddress,
+    tokenInDecimals: payload.tokenInDecimals.toString(),
+    amountIn: payload.amountIn,
+    slippagePercent: payload.slippagePercent,
+  });
+  if (payload.usdcAddress) {
+    params.set('usdcAddress', payload.usdcAddress);
+  }
+  const response = await fetch(`${API_V1_BASE}/quotes/asset-usdc?${params.toString()}`);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to fetch asset/USDC quote' }));
+    throw new Error(error.error || 'Failed to fetch asset/USDC quote');
+  }
+  const data = await response.json();
+  if (!data?.quote) {
+    throw new Error('Invalid quote response');
+  }
+  return data.quote as AssetUsdcQuoteResponse;
 }

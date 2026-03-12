@@ -4,6 +4,7 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "deploy:brickt:base-sepolia": "hardhat run deploy/deployBricktBaseSepolia.ts --network base-sepolia",
     "deploy:sepolia": "hardhat run deploy/deploySepoliaTestnet.ts --network sepolia",
     "deploy:base-sepolia": "hardhat run deploy/deployBaseSepoliaTestnet.ts --network base-sepolia",
     "deploy:canton-testnet": "hardhat run deploy/deployCantonTestnet.ts --network canton-testnet",
