@@ -393,6 +393,8 @@ function PropertyPremiumLayout({
   const primaryImage = selectedImageExists ? selectedGalleryImage : safeGalleryImages[0] ?? null
   const googleMapsUrl = buildGoogleMapsCoordUrl(safeProperty.latitude, safeProperty.longitude)
   const showCompletionStamp = safeProperty.profitDistributed === true
+  const showInvestSection = canInvest
+  const showClaimsSection = !canInvest || canClaimEquity || canClaimProfit || canClaimRefund
 
   const onAssetChange = (e: ChangeEvent<HTMLSelectElement>) => {
     setInvestAsset(e.target.value as AssetType)
@@ -575,129 +577,133 @@ function PropertyPremiumLayout({
           </div>
 
           <div className="h-fit space-y-8 xl:sticky xl:top-6">
-            <Section title="Invest" eyebrow="Primary Action">
-              <div className="space-y-4">
-                <select
-                  value={investAsset}
-                  onChange={onAssetChange}
-                  className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
-                  disabled={txInFlight}
-                >
-                  <option value="USDC">USDC</option>
-                  <option value="ETH" disabled={!canSwapOnBaseSepolia}>ETH</option>
-                  <option value="PLATFORM" disabled>{platformTokenSymbol} (Coming soon)</option>
-                </select>
+            {showInvestSection ? (
+              <Section title="Invest" eyebrow="Primary Action">
+                <div className="space-y-4">
+                  <select
+                    value={investAsset}
+                    onChange={onAssetChange}
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+                    disabled={txInFlight}
+                  >
+                    <option value="USDC">USDC</option>
+                    <option value="ETH" disabled={!canSwapOnBaseSepolia}>ETH</option>
+                    <option value="PLATFORM" disabled>{platformTokenSymbol} (Coming soon)</option>
+                  </select>
 
-                <input
-                  type="text"
-                  value={investAsset === 'USDC' ? amountUsdc : amountEth}
-                  onChange={onAmountChange}
-                  placeholder={
-                    investAsset === 'USDC'
-                      ? 'Amount (USDC)'
-                      : investAsset === 'ETH'
-                        ? 'Amount (ETH)'
-                        : `Amount (${platformTokenSymbol})`
-                  }
-                  inputMode="decimal"
-                  className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
-                  disabled={txInFlight}
-                />
+                  <input
+                    type="text"
+                    value={investAsset === 'USDC' ? amountUsdc : amountEth}
+                    onChange={onAmountChange}
+                    placeholder={
+                      investAsset === 'USDC'
+                        ? 'Amount (USDC)'
+                        : investAsset === 'ETH'
+                          ? 'Amount (ETH)'
+                          : `Amount (${platformTokenSymbol})`
+                    }
+                    inputMode="decimal"
+                    className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+                    disabled={txInFlight}
+                  />
 
-                {investAsset !== 'USDC' ? (
-                  <>
-                    <input
-                      type="text"
-                      value={slippagePercent}
-                      onChange={(e) => setSlippagePercent(e.target.value)}
-                      placeholder="Slippage (%)"
-                      inputMode="decimal"
-                      className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
-                      disabled={txInFlight}
-                    />
-                    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-slate-300">
-                      <p>
-                        Estimated USDC out:{' '}
-                        <span className="font-semibold text-white">
-                          {isQuotingSwapAsset
-                            ? 'Quoting...'
-                            : quotedUsdcOutBaseUnits
-                              ? `${formatUsdcUnits(quotedUsdcOutBaseUnits)} USDC`
-                              : '--'}
-                        </span>
-                      </p>
-                      <p className="mt-1">
-                        Auto min USDC out:{' '}
-                        <span className="font-semibold text-white">
-                          {minUsdcOutBaseUnits ? `${formatUsdcUnits(minUsdcOutBaseUnits)} USDC` : '--'}
-                        </span>
-                      </p>
+                  {investAsset !== 'USDC' ? (
+                    <>
+                      <input
+                        type="text"
+                        value={slippagePercent}
+                        onChange={(e) => setSlippagePercent(e.target.value)}
+                        placeholder="Slippage (%)"
+                        inputMode="decimal"
+                        className="w-full rounded-xl border border-white/10 bg-slate-900 p-3"
+                        disabled={txInFlight}
+                      />
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-slate-300">
+                        <p>
+                          Estimated USDC out:{' '}
+                          <span className="font-semibold text-white">
+                            {isQuotingSwapAsset
+                              ? 'Quoting...'
+                              : quotedUsdcOutBaseUnits
+                                ? `${formatUsdcUnits(quotedUsdcOutBaseUnits)} USDC`
+                                : '--'}
+                          </span>
+                        </p>
+                        <p className="mt-1">
+                          Auto min USDC out:{' '}
+                          <span className="font-semibold text-white">
+                            {minUsdcOutBaseUnits ? `${formatUsdcUnits(minUsdcOutBaseUnits)} USDC` : '--'}
+                          </span>
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {!walletAvailable ? <p className="text-xs text-amber-300">Connect wallet to invest.</p> : null}
+                  {walletAvailable && !canInvest ? <p className="text-xs text-amber-300">{investUnavailableMessage}</p> : null}
+                  {quoteError ? <p className="text-xs text-red-300">{quoteError}</p> : null}
+                  {txError ? <p className="text-xs text-red-300">{txError}</p> : null}
+                  {txStatus ? <p className="text-xs text-emerald-300">{txStatus}</p> : null}
+                  {txHashesInStatus.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {txHashesInStatus.map((txHash) => (
+                        <TxHashLink key={txHash} txHash={txHash} compact />
+                      ))}
                     </div>
-                  </>
-                ) : null}
+                  ) : null}
 
-                {!walletAvailable ? <p className="text-xs text-amber-300">Connect wallet to invest.</p> : null}
-                {walletAvailable && !canInvest ? <p className="text-xs text-amber-300">{investUnavailableMessage}</p> : null}
-                {quoteError ? <p className="text-xs text-red-300">{quoteError}</p> : null}
-                {txError ? <p className="text-xs text-red-300">{txError}</p> : null}
-                {txStatus ? <p className="text-xs text-emerald-300">{txStatus}</p> : null}
-                {txHashesInStatus.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {txHashesInStatus.map((txHash) => (
-                      <TxHashLink key={txHash} txHash={txHash} compact />
-                    ))}
-                  </div>
-                ) : null}
+                  <button
+                    type="button"
+                    onClick={handleInvest}
+                    disabled={
+                      !walletAvailable ||
+                      txInFlight ||
+                      !canInvest ||
+                      (investAsset !== 'USDC' && (isQuotingSwapAsset || !quotedUsdcOutBaseUnits || !minUsdcOutBaseUnits))
+                    }
+                    className="w-full rounded-xl bg-cyan-400 py-4 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {txInFlight ? 'Processing...' : investAsset !== 'USDC' ? 'Swap & Invest' : 'Invest'}
+                  </button>
+                </div>
+              </Section>
+            ) : null}
 
-                <button
-                  type="button"
-                  onClick={handleInvest}
-                  disabled={
-                    !walletAvailable ||
-                    txInFlight ||
-                    !canInvest ||
-                    (investAsset !== 'USDC' && (isQuotingSwapAsset || !quotedUsdcOutBaseUnits || !minUsdcOutBaseUnits))
-                  }
-                  className="w-full rounded-xl bg-cyan-400 py-4 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {txInFlight ? 'Processing...' : investAsset !== 'USDC' ? 'Swap & Invest' : 'Invest'}
-                </button>
-              </div>
-            </Section>
+            {showClaimsSection ? (
+              <Section title="Claims" eyebrow="Investor Actions">
+                <div className="space-y-3">
+                  {!canClaimEquity ? <p className="text-xs text-slate-400">Equity: {claimEquityUnavailableMessage}</p> : null}
+                  {!canClaimProfit ? <p className="text-xs text-slate-400">Profit: {claimProfitUnavailableMessage}</p> : null}
 
-            <Section title="Claims" eyebrow="Investor Actions">
-              <div className="space-y-3">
-                {!canClaimEquity ? <p className="text-xs text-slate-400">Equity: {claimEquityUnavailableMessage}</p> : null}
-                {!canClaimProfit ? <p className="text-xs text-slate-400">Profit: {claimProfitUnavailableMessage}</p> : null}
+                  <button
+                    type="button"
+                    onClick={handleClaimEquity}
+                    disabled={txInFlight || !walletAvailable || !canClaimEquity}
+                    className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Claim Equity
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleClaimEquity}
-                  disabled={txInFlight || !walletAvailable || !canClaimEquity}
-                  className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Claim Equity
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleClaimProfit}
+                    disabled={txInFlight || !walletAvailable || !canClaimProfit}
+                    className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Claim Profit
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleClaimProfit}
-                  disabled={txInFlight || !walletAvailable || !canClaimProfit}
-                  className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Claim Profit
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleClaimRefund}
-                  disabled={txInFlight || !walletAvailable || !canClaimRefund}
-                  className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Claim Refund
-                </button>
-              </div>
-            </Section>
+                  <button
+                    type="button"
+                    onClick={handleClaimRefund}
+                    disabled={txInFlight || !walletAvailable || !canClaimRefund}
+                    className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Claim Refund
+                  </button>
+                </div>
+              </Section>
+            ) : null}
 
             <Section title="Contract Details" eyebrow="Transparency">
               <div className="space-y-4 break-all font-mono text-xs text-slate-300">
