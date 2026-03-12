@@ -9,11 +9,13 @@ import {
   fetchMyProfitClaims,
   fetchMyProfitStatus,
   fetchProperties,
+  requestTestnetFunds,
   InvestmentResponse,
   EquityClaimResponse,
   ProfitClaimResponse,
   InvestorProfitStatusResponse,
   PropertyResponse,
+  FaucetRequestResponse,
 } from '../lib/api';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -165,6 +167,10 @@ export default function InvestorDashboard() {
   const [showNonActionableClaims, setShowNonActionableClaims] = useState(false);
   const [pendingClaims, setPendingClaims] = useState<PendingClaim[]>([]);
   const [pendingInvestments, setPendingInvestments] = useState<PendingInvestment[]>([]);
+  const [faucetToken, setFaucetToken] = useState<'eth' | 'usdc'>('eth');
+  const [isRequestingFaucet, setIsRequestingFaucet] = useState(false);
+  const [faucetResult, setFaucetResult] = useState<FaucetRequestResponse | null>(null);
+  const [faucetError, setFaucetError] = useState('');
   const lastHandledPortfolioActivityRef = useRef<string | null>(null);
   const lastAutoAuthAddressRef = useRef<string | null>(null);
   const hasMatchingConnectedWallet =
@@ -232,6 +238,28 @@ export default function InvestorDashboard() {
       return [next, ...current].slice(0, 20);
     });
   }, []);
+
+  const handleRequestFaucet = useCallback(async () => {
+    if (!connectedWalletAddress) {
+      setFaucetError('Connect a wallet before requesting testnet funds.');
+      return;
+    }
+
+    setIsRequestingFaucet(true);
+    setFaucetError('');
+    setFaucetResult(null);
+    try {
+      const result = await requestTestnetFunds({
+        address: connectedWalletAddress,
+        token: faucetToken,
+      });
+      setFaucetResult(result);
+    } catch (error) {
+      setFaucetError(error instanceof Error ? error.message : 'Failed to request testnet funds');
+    } finally {
+      setIsRequestingFaucet(false);
+    }
+  }, [connectedWalletAddress, faucetToken]);
 
   const handlePortfolioActivity = useCallback(
     (payload: {
@@ -673,6 +701,60 @@ export default function InvestorDashboard() {
                 {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not authenticated'}{' '}
                 {role && <span className="text-emerald-400">({role})</span>}
               </p>
+            </div>
+          </div>
+
+          <div className="mb-8 rounded-2xl bg-slate-900/80 backdrop-blur border border-slate-700/50 p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Testnet Faucet</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Request Base Sepolia funds</h2>
+                <p className="mt-2 max-w-2xl text-sm text-slate-400">
+                  Request small ETH or USDC test balances for the connected wallet so you can try the full investment flow.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <select
+                  value={faucetToken}
+                  onChange={(event) => setFaucetToken(event.target.value as 'eth' | 'usdc')}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white"
+                  disabled={isRequestingFaucet}
+                >
+                  <option value="eth">ETH</option>
+                  <option value="usdc">USDC</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void handleRequestFaucet()}
+                  disabled={!connectedWalletAddress || isRequestingFaucet}
+                  className="rounded-lg bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isRequestingFaucet ? 'Requesting...' : `Request ${faucetToken.toUpperCase()}`}
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 text-sm text-slate-400 space-y-2">
+              <p>
+                Wallet target:{' '}
+                <span className="text-slate-200">
+                  {connectedWalletAddress
+                    ? `${connectedWalletAddress.slice(0, 6)}...${connectedWalletAddress.slice(-4)}`
+                    : 'Connect a wallet first'}
+                </span>
+              </p>
+              {faucetError ? <p className="text-red-300">{faucetError}</p> : null}
+              {faucetResult ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                  <p className="text-emerald-200">
+                    Faucet request submitted for {faucetResult.token.toUpperCase()}.
+                  </p>
+                  {faucetResult.transactionHash ? (
+                    <div className="mt-2">
+                      <TxHashLink txHash={faucetResult.transactionHash} compact />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

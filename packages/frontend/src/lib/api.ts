@@ -382,6 +382,14 @@ export interface AdminMetricsResponse {
   };
 }
 
+export interface FaucetRequestResponse {
+  ok: boolean;
+  token: 'eth' | 'usdc';
+  address: string;
+  transactionHash: string | null;
+  providerRequestId: string | null;
+}
+
 export interface ProfitPreflightResponse {
   propertyId: string;
   chainId: number;
@@ -1483,4 +1491,24 @@ export async function fetchAssetUsdcQuote(payload: {
     throw new Error('Invalid quote response');
   }
   return data.quote as AssetUsdcQuoteResponse;
+}
+
+export async function requestTestnetFunds(payload: {
+  address: string;
+  token: 'eth' | 'usdc';
+}): Promise<FaucetRequestResponse> {
+  const response = await fetch(`${API_V1_BASE}/faucet/request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to request testnet funds' }));
+    throw new Error(error.error || 'Failed to request testnet funds');
+  }
+
+  return response.json();
 }

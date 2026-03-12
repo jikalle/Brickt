@@ -60,6 +60,9 @@ export const env = {
   rateLimitMaxRequests: parseIntEnv(process.env.RATE_LIMIT_MAX_REQUESTS, 120),
   authRateLimitWindowMs: parseIntEnv(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 60_000),
   authRateLimitMaxRequests: parseIntEnv(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, 20),
+  faucetEnabled: process.env.FAUCET_ENABLED !== 'false',
+  faucetWalletCooldownMinutes: parseIntEnv(process.env.FAUCET_WALLET_COOLDOWN_MINUTES, 1_440),
+  faucetIpCooldownMinutes: parseIntEnv(process.env.FAUCET_IP_COOLDOWN_MINUTES, 60),
   ownerAllowlist: (process.env.OWNER_ALLOWLIST ?? '')
     .split(',')
     .map((value) => value.trim().toLowerCase())

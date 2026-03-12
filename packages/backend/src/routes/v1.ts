@@ -50,6 +50,7 @@ import {
 } from '../controllers/v1/adminController.js';
 import { getAdminMetrics } from '../controllers/v1/observabilityController.js';
 import { quoteAssetUsdc, quoteEthUsdc } from '../controllers/v1/quotesController.js';
+import { requestTestnetFunds } from '../controllers/v1/faucetController.js';
 
 const router: ExpressRouter = Router();
 
@@ -70,6 +71,7 @@ router.get('/campaigns/:campaignAddress/investments', listCampaignInvestments);
 router.get('/campaigns/:campaignAddress/refunds', listCampaignRefunds);
 router.get('/quotes/eth-usdc', quoteEthUsdc);
 router.get('/quotes/asset-usdc', quoteAssetUsdc);
+router.post('/faucet/request', requestTestnetFunds);
 
 router.get('/me/investments', auth, listMyInvestments);
 router.get('/me/equity-claims', auth, listMyEquityClaims);
