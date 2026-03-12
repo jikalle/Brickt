@@ -203,7 +203,105 @@ const formatBestFor = (bestFor: string | null | undefined): string => {
   return normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())
 }
 
-const COMPLETED_STAMP_LABEL = 'Profit Shared'
+const CompletionSeal = ({ className = '' }: { className?: string }) => (
+  <div
+    className={`relative flex items-center justify-center ${className}`.trim()}
+    style={{
+      transform: 'rotate(-18deg)',
+      width: 148,
+      height: 148,
+      filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.55))',
+    }}
+  >
+    <div
+      className="absolute inset-[6px] rounded-full"
+      style={{
+        background:
+          'radial-gradient(circle at 32% 28%, rgba(255,255,255,0.96) 0%, rgba(232,245,238,0.96) 30%, rgba(199,230,214,0.94) 68%, rgba(164,214,190,0.92) 100%)',
+        boxShadow:
+          'inset 0 2px 10px rgba(255,255,255,0.55), inset 0 -10px 18px rgba(6,95,70,0.18)',
+      }}
+    />
+
+    <div
+      className="absolute inset-0 rounded-full border-[4px] border-emerald-300/95"
+      style={{ boxShadow: 'inset 0 0 0 2.5px rgba(6,95,70,0.8), 0 0 0 1.5px rgba(167,243,208,0.45)' }}
+    />
+    <div
+      className="absolute rounded-full border-[2px] border-emerald-300/80"
+      style={{ inset: 10, boxShadow: 'inset 0 0 0 1px rgba(6,95,70,0.55)' }}
+    />
+
+    <svg className="absolute inset-0" viewBox="0 0 148 148" style={{ opacity: 0.9 }}>
+      <defs>
+        <path id="topArcDetail" d="M 20,74 A 54,54 0 0,1 128,74" />
+        <path id="bottomArcDetail" d="M 26,88 A 54,54 0 0,0 122,88" />
+      </defs>
+      <text
+        fill="#111827"
+        fontSize="11.5"
+        fontWeight="800"
+        letterSpacing="3.5"
+        fontFamily="monospace"
+        textAnchor="middle"
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth="0.45"
+        paintOrder="stroke"
+      >
+        <textPath href="#topArcDetail" startOffset="50%">
+          INVESTMENT COMPLETE
+        </textPath>
+      </text>
+      <text
+        fill="#111827"
+        fontSize="10"
+        fontWeight="700"
+        letterSpacing="2"
+        fontFamily="monospace"
+        textAnchor="middle"
+        opacity="0.7"
+        stroke="rgba(255,255,255,0.16)"
+        strokeWidth="0.35"
+        paintOrder="stroke"
+      >
+        <textPath href="#bottomArcDetail" startOffset="50%">
+          ✦ VERIFIED ✦
+        </textPath>
+      </text>
+    </svg>
+
+    <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
+      <span
+        className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
+        style={{
+          fontFamily: 'monospace',
+          textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+        }}
+      >
+        PROFIT
+      </span>
+      <div className="w-10 border-t border-emerald-500/55" />
+      <span
+        className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
+        style={{
+          fontFamily: 'monospace',
+          textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+        }}
+      >
+        SHARED
+      </span>
+    </div>
+
+    <div
+      className="absolute inset-0 rounded-full"
+      style={{
+        background:
+          'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.24) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(6,95,70,0.08) 0%, transparent 54%)',
+        mixBlendMode: 'screen',
+      }}
+    />
+  </div>
+)
 
 const toBuilderDataSuffix = (codes: string[]): string | null => {
   if (codes.length === 0) {
@@ -326,11 +424,6 @@ function PropertyPremiumLayout({
         <section className="rounded-[32px] border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950 p-8">
           <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="min-w-0">
-              {showCompletionStamp ? (
-                <div className="mb-5 inline-flex items-center rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-100">
-                  {COMPLETED_STAMP_LABEL}
-                </div>
-              ) : null}
               <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">{safeProperty.name ?? 'Property'}</h1>
 
               <p className="mt-4 max-w-2xl text-slate-300">{safeProperty.description ?? 'No description available.'}</p>
@@ -390,63 +483,7 @@ function PropertyPremiumLayout({
                       {/* Rubber Stamp Overlay */}
                       {showCompletionStamp ? (
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                          <div
-                            className="relative flex items-center justify-center"
-                            style={{
-                              transform: 'rotate(-18deg)',
-                              width: 148,
-                              height: 148,
-                              filter: 'drop-shadow(0 0 12px rgba(8, 5, 204, 0.55))',
-                            }}
-                          >
-                            {/* Outer ring */}
-                            <div
-                              className="absolute inset-0 rounded-full border-[3.5px] border-emerald-400/80"
-                              style={{ boxShadow: 'inset 0 0 0 2px rgba(24, 2, 126, 0.15)' }}
-                            />
-                            {/* Inner ring */}
-                            <div className="absolute rounded-full border-[1.5px] border-emerald-400/60" style={{ inset: 10 }} />
-
-                            {/* Curved text */}
-                            <svg className="absolute inset-0" viewBox="0 0 148 148" style={{ opacity: 0.9 }}>
-                              <defs>
-                                <path id="topArcDetail" d="M 20,74 A 54,54 0 0,1 128,74" />
-                                <path id="bottomArcDetail" d="M 26,88 A 54,54 0 0,0 122,88" />
-                              </defs>
-                              <text fill="#6ee7b7" fontSize="11.5" fontWeight="800" letterSpacing="3.5" fontFamily="monospace" textAnchor="middle">
-                                <textPath href="#topArcDetail" startOffset="50%">INVESTMENT COMPLETE</textPath>
-                              </text>
-                              <text fill="#6ee7b7" fontSize="10" fontWeight="700" letterSpacing="2" fontFamily="monospace" textAnchor="middle" opacity="0.7">
-                                <textPath href="#bottomArcDetail" startOffset="50%">✦ VERIFIED ✦</textPath>
-                              </text>
-                            </svg>
-
-                            {/* Center text */}
-                            <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
-                              <span
-                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-emerald-300"
-                                style={{ fontFamily: 'monospace', textShadow: '0 0 8px rgba(52,211,153,0.6)' }}
-                              >
-                                PROFIT
-                              </span>
-                              <div className="w-10 border-t border-emerald-400/60" />
-                              <span
-                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-emerald-300"
-                                style={{ fontFamily: 'monospace', textShadow: '0 0 8px rgba(52,211,153,0.6)' }}
-                              >
-                                SHARED
-                              </span>
-                            </div>
-
-                            {/* Ink bleed overlay */}
-                            <div
-                              className="absolute inset-0 rounded-full"
-                              style={{
-                                background: 'radial-gradient(ellipse at 35% 35%, rgba(52,211,153,0.07) 0%, transparent 65%)',
-                                mixBlendMode: 'screen',
-                              }}
-                            />
-                          </div>
+                          <CompletionSeal />
                         </div>
                       ) : null}
                     </div>
