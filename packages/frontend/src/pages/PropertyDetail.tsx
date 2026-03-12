@@ -376,7 +376,7 @@ function PropertyPremiumLayout({
               <div className="space-y-4">
                 <div className="grid gap-4 lg:grid-cols-[1fr_140px]">
                   <div className="space-y-4">
-                    <div className="aspect-[16/10] overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
+                    <div className="relative aspect-[16/10] overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
                       {primaryImage ? (
                         <img
                           src={primaryImage}
@@ -386,6 +386,69 @@ function PropertyPremiumLayout({
                       ) : (
                         <div className="flex h-full items-center justify-center text-slate-400">No image</div>
                       )}
+
+                      {/* Rubber Stamp Overlay */}
+                      {showCompletionStamp ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="relative flex items-center justify-center"
+                            style={{
+                              transform: 'rotate(-18deg)',
+                              width: 148,
+                              height: 148,
+                              filter: 'drop-shadow(0 0 12px rgba(8, 5, 204, 0.55))',
+                            }}
+                          >
+                            {/* Outer ring */}
+                            <div
+                              className="absolute inset-0 rounded-full border-[3.5px] border-emerald-400/80"
+                              style={{ boxShadow: 'inset 0 0 0 2px rgba(24, 2, 126, 0.15)' }}
+                            />
+                            {/* Inner ring */}
+                            <div className="absolute rounded-full border-[1.5px] border-emerald-400/60" style={{ inset: 10 }} />
+
+                            {/* Curved text */}
+                            <svg className="absolute inset-0" viewBox="0 0 148 148" style={{ opacity: 0.9 }}>
+                              <defs>
+                                <path id="topArcDetail" d="M 20,74 A 54,54 0 0,1 128,74" />
+                                <path id="bottomArcDetail" d="M 26,88 A 54,54 0 0,0 122,88" />
+                              </defs>
+                              <text fill="#6ee7b7" fontSize="11.5" fontWeight="800" letterSpacing="3.5" fontFamily="monospace" textAnchor="middle">
+                                <textPath href="#topArcDetail" startOffset="50%">INVESTMENT COMPLETE</textPath>
+                              </text>
+                              <text fill="#6ee7b7" fontSize="10" fontWeight="700" letterSpacing="2" fontFamily="monospace" textAnchor="middle" opacity="0.7">
+                                <textPath href="#bottomArcDetail" startOffset="50%">✦ VERIFIED ✦</textPath>
+                              </text>
+                            </svg>
+
+                            {/* Center text */}
+                            <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
+                              <span
+                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-emerald-300"
+                                style={{ fontFamily: 'monospace', textShadow: '0 0 8px rgba(52,211,153,0.6)' }}
+                              >
+                                PROFIT
+                              </span>
+                              <div className="w-10 border-t border-emerald-400/60" />
+                              <span
+                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-emerald-300"
+                                style={{ fontFamily: 'monospace', textShadow: '0 0 8px rgba(52,211,153,0.6)' }}
+                              >
+                                SHARED
+                              </span>
+                            </div>
+
+                            {/* Ink bleed overlay */}
+                            <div
+                              className="absolute inset-0 rounded-full"
+                              style={{
+                                background: 'radial-gradient(ellipse at 35% 35%, rgba(52,211,153,0.07) 0%, transparent 65%)',
+                                mixBlendMode: 'screen',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {safeGalleryImages.length > 0 ? (

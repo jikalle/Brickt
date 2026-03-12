@@ -48,8 +48,6 @@ const formatBestFor = (bestFor: string | null | undefined): string | null => {
   return `Best for: ${normalized.replace(/\b\w/g, (char: string) => char.toUpperCase())}`;
 };
 
-const COMPLETED_STAMP_LABEL = 'Profit Shared';
-
 type PropertyFundingPhase = 'NOT_STARTED' | 'ACTIVE' | 'FUNDED' | 'FAILED' | 'ENDED' | 'UNKNOWN';
 
 const getPropertyFundingPhase = (
@@ -349,21 +347,123 @@ export default function Properties() {
                       {/* Status Badge */}
                       <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                         {campaign ? (
-                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 border border-blue-500/30 text-blue-300">
+                          <div className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500 border border-blue-500/30 text-blue-300">
                             {fundingPhase}
                           </div>
                         ) : null}
-                        {showCompletionStamp ? (
-                          <div className="rounded-full border border-emerald-300/40 bg-emerald-400/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                            {COMPLETED_STAMP_LABEL}
-                          </div>
-                        ) : null}
+                
                       </div>
 
                       {showCompletionStamp ? (
-                        <div className="pointer-events-none absolute -right-20 top-8 rotate-[24deg]">
-                          <div className="border border-emerald-100/70 bg-emerald-300/88 px-20 py-2.5 text-xs font-black uppercase tracking-[0.34em] text-slate-950 shadow-[0_14px_40px_rgba(16,185,129,0.35)]">
-                            {COMPLETED_STAMP_LABEL}
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="relative flex items-center justify-center"
+                            style={{
+                              transform: 'rotate(-18deg)',
+                              width: 148,
+                              height: 148,
+                              filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.55))',
+                            }}
+                          >
+                            {/* Ceramic face */}
+                            <div
+                              className="absolute inset-[6px] rounded-full"
+                              style={{
+                                background:
+                                  'radial-gradient(circle at 32% 28%, rgba(255,255,255,0.96) 0%, rgba(232,245,238,0.96) 30%, rgba(199,230,214,0.94) 68%, rgba(164,214,190,0.92) 100%)',
+                                boxShadow:
+                                  'inset 0 2px 10px rgba(255,255,255,0.55), inset 0 -10px 18px rgba(6,95,70,0.18)',
+                              }}
+                            />
+
+                            {/* Outer ring */}
+                            <div
+                              className="absolute inset-0 rounded-full border-[4px] border-emerald-300/95"
+                              style={{ boxShadow: 'inset 0 0 0 2.5px rgba(6,95,70,0.8), 0 0 0 1.5px rgba(167,243,208,0.45)' }}
+                            />
+                            {/* Inner ring */}
+                            <div
+                              className="absolute rounded-full border-[2px] border-emerald-300/80"
+                              style={{ inset: 10, boxShadow: 'inset 0 0 0 1px rgba(6,95,70,0.55)' }}
+                            />
+
+                            {/* Curved text top */}
+                            <svg
+                              className="absolute inset-0"
+                              viewBox="0 0 148 148"
+                              style={{ opacity: 0.9 }}
+                            >
+                              <defs>
+                                <path id="topArc" d="M 20,74 A 54,54 0 0,1 128,74" />
+                                <path id="bottomArc" d="M 26,88 A 54,54 0 0,0 122,88" />
+                              </defs>
+                              <text
+                                fill="#111827"
+                                fontSize="11.5"
+                                fontWeight="800"
+                                letterSpacing="3.5"
+                                fontFamily="monospace"
+                                textAnchor="middle"
+                                stroke="rgba(255,255,255,0.18)"
+                                strokeWidth="0.45"
+                                paintOrder="stroke"
+                              >
+                                <textPath href="#topArc" startOffset="50%">
+                                  INVESTMENT COMPLETE
+                                </textPath>
+                              </text>
+                              <text
+                                fill="#111827"
+                                fontSize="10"
+                                fontWeight="700"
+                                letterSpacing="2"
+                                fontFamily="monospace"
+                                textAnchor="middle"
+                                opacity="0.7"
+                                stroke="rgba(255,255,255,0.16)"
+                                strokeWidth="0.35"
+                                paintOrder="stroke"
+                              >
+                                <textPath href="#bottomArc" startOffset="50%">
+                                  ✦ VERIFIED ✦
+                                </textPath>
+                              </text>
+                            </svg>
+
+                            {/* Center text */}
+                            <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
+                              <span
+                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
+                                style={{
+                                  fontFamily: 'monospace',
+                                  textShadow:
+                                    '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+                                }}
+                              >
+                                PROFIT
+                              </span>
+                              <div className="w-10 border-t border-emerald-400/60" />
+                              <span
+                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
+                                style={{
+                                  fontFamily: 'monospace',
+                                  textShadow:
+                                    '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+                                }}
+                              >
+                                SHARED
+                              </span>
+                            </div>
+
+                            {/* Ceramic glaze / texture overlay */}
+                            <div
+                              className="absolute inset-0 rounded-full"
+                              style={{
+                                background:
+                                  'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.24) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(6,95,70,0.08) 0%, transparent 54%)',
+                                mixBlendMode: 'screen',
+                              }}
+                            />
                           </div>
                         </div>
                       ) : null}
