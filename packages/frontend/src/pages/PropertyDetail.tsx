@@ -30,6 +30,7 @@ import { env } from '../config/env'
 import { emitPortfolioActivity } from '../lib/portfolioActivity'
 import TxHashLink from '../components/common/TxHashLink'
 import { extractTxHashes } from '../lib/txHash'
+import { getBasePaymasterUrl, trySendSponsoredCall } from '../lib/baseAccount'
 
 type AssetType = 'USDC' | 'ETH' | 'PLATFORM'
 type CampaignPhase = 'NOT_STARTED' | 'ACTIVE' | 'FAILED' | 'ENDED' | 'UNKNOWN'
@@ -81,6 +82,7 @@ type PropertyPremiumLayoutProps = {
   txInFlight?: boolean
   walletAvailable?: boolean
   canSwapOnBaseSepolia?: boolean
+  gasSponsorshipAvailable?: boolean
   platformTokenSymbol?: string
   canInvest?: boolean
   canClaimEquity?: boolean
@@ -367,6 +369,7 @@ function PropertyPremiumLayout({
   txInFlight = false,
   walletAvailable = false,
   canSwapOnBaseSepolia = false,
+  gasSponsorshipAvailable = false,
   platformTokenSymbol = 'BRICKT',
   canInvest = false,
   canClaimEquity = false,
@@ -672,6 +675,9 @@ function PropertyPremiumLayout({
             {showClaimsSection ? (
               <Section title="Claims" eyebrow="Investor Actions">
                 <div className="space-y-3">
+                  {gasSponsorshipAvailable ? (
+                    <p className="text-xs text-cyan-300">Gas sponsorship is available for supported Base wallets.</p>
+                  ) : null}
                   {!canClaimEquity ? <p className="text-xs text-slate-400">Equity: {claimEquityUnavailableMessage}</p> : null}
                   {!canClaimProfit ? <p className="text-xs text-slate-400">Profit: {claimProfitUnavailableMessage}</p> : null}
 
@@ -1143,6 +1149,7 @@ export default function PropertyDetail() {
 
   const txInFlight = isInvesting || isClaimingEquity || isClaimingProfit || isClaimingRefund
   const txHashesInStatus = useMemo(() => extractTxHashes(txStatus), [txStatus])
+  const gasSponsorshipAvailable = Boolean(env.BASE_SEPOLIA_PAYMASTER_URL)
 
   const ensureBaseSepolia = async (injected: EthereumProvider) => {
     try {
@@ -1653,14 +1660,44 @@ export default function PropertyDetail() {
 
     setIsClaimingEquity(true)
     try {
-      const signer = await withSigner()
-      const crowdfund = new Contract(property.crowdfundAddress, CROWDFUND_ABI, signer)
-      setTxStatus('Submitting equity claim...')
-      const tx = await sendContractTransaction(signer, crowdfund, 'claimTokens')
-      await tx.wait()
-      setTxStatus(`Equity claim confirmed: ${tx.hash}`)
+      let txHash: string | null = null
+      const injected = getEthereumProvider()
+      const paymasterUrl = getBasePaymasterUrl(84532)
+
+      if (injected && connectedAddress) {
+        await ensureBaseSepolia(injected)
+        await injected.request({ method: 'eth_requestAccounts' })
+        const txData = new Contract(property.crowdfundAddress, CROWDFUND_ABI).interface.encodeFunctionData('claimTokens')
+        const data = (builderDataSuffix ? concat([txData, builderDataSuffix]) : txData) as `0x${string}`
+        setTxStatus('Requesting gas-sponsored equity claim...')
+        const sponsored = await trySendSponsoredCall({
+          walletProvider: injected,
+          from: connectedAddress,
+          chainId: 84532,
+          call: {
+            to: property.crowdfundAddress,
+            data,
+          },
+          paymasterUrl,
+        })
+        txHash = sponsored?.txHash || null
+      }
+
+      if (!txHash) {
+        const signer = await withSigner()
+        const crowdfund = new Contract(property.crowdfundAddress, CROWDFUND_ABI, signer)
+        setTxStatus('Submitting equity claim...')
+        const tx = await sendContractTransaction(signer, crowdfund, 'claimTokens')
+        await tx.wait()
+        txHash = tx.hash
+      }
+      if (!txHash) {
+        throw new Error('Equity claim transaction hash unavailable')
+      }
+
+      setTxStatus(`Equity claim confirmed: ${txHash}`)
       emitPortfolioActivity({
-        txHash: tx.hash,
+        txHash,
         propertyId: property.propertyId,
         type: 'claim-equity',
       })
@@ -1687,15 +1724,48 @@ export default function PropertyDetail() {
 
     setIsClaimingProfit(true)
     try {
-      const signer = await withSigner()
-      const distributor = new Contract(property.profitDistributorAddress, PROFIT_DISTRIBUTOR_ABI, signer)
-      setTxStatus('Submitting profit claim...')
-      const tx = await sendContractTransaction(signer, distributor, 'claim')
-      await tx.wait()
-      setTxStatus(`Profit claim confirmed: ${tx.hash}`)
+      let txHash: string | null = null
+      const injected = getEthereumProvider()
+      const paymasterUrl = getBasePaymasterUrl(84532)
+
+      if (injected && connectedAddress) {
+        await ensureBaseSepolia(injected)
+        await injected.request({ method: 'eth_requestAccounts' })
+        const txData = new Contract(
+          property.profitDistributorAddress,
+          PROFIT_DISTRIBUTOR_ABI
+        ).interface.encodeFunctionData('claim')
+        const data = (builderDataSuffix ? concat([txData, builderDataSuffix]) : txData) as `0x${string}`
+        setTxStatus('Requesting gas-sponsored profit claim...')
+        const sponsored = await trySendSponsoredCall({
+          walletProvider: injected,
+          from: connectedAddress,
+          chainId: 84532,
+          call: {
+            to: property.profitDistributorAddress,
+            data,
+          },
+          paymasterUrl,
+        })
+        txHash = sponsored?.txHash || null
+      }
+
+      if (!txHash) {
+        const signer = await withSigner()
+        const distributor = new Contract(property.profitDistributorAddress, PROFIT_DISTRIBUTOR_ABI, signer)
+        setTxStatus('Submitting profit claim...')
+        const tx = await sendContractTransaction(signer, distributor, 'claim')
+        await tx.wait()
+        txHash = tx.hash
+      }
+      if (!txHash) {
+        throw new Error('Profit claim transaction hash unavailable')
+      }
+
+      setTxStatus(`Profit claim confirmed: ${txHash}`)
       setClaimableProfitBaseUnits(0n)
       emitPortfolioActivity({
-        txHash: tx.hash,
+        txHash,
         propertyId: property.propertyId,
         type: 'claim-profit',
       })
@@ -1722,14 +1792,44 @@ export default function PropertyDetail() {
 
     setIsClaimingRefund(true)
     try {
-      const signer = await withSigner()
-      const crowdfund = new Contract(property.crowdfundAddress, CROWDFUND_ABI, signer)
-      setTxStatus('Submitting refund claim...')
-      const tx = await sendContractTransaction(signer, crowdfund, 'claimRefund')
-      await tx.wait()
-      setTxStatus(`Refund confirmed: ${tx.hash}`)
+      let txHash: string | null = null
+      const injected = getEthereumProvider()
+      const paymasterUrl = getBasePaymasterUrl(84532)
+
+      if (injected && connectedAddress) {
+        await ensureBaseSepolia(injected)
+        await injected.request({ method: 'eth_requestAccounts' })
+        const txData = new Contract(property.crowdfundAddress, CROWDFUND_ABI).interface.encodeFunctionData('claimRefund')
+        const data = (builderDataSuffix ? concat([txData, builderDataSuffix]) : txData) as `0x${string}`
+        setTxStatus('Requesting gas-sponsored refund claim...')
+        const sponsored = await trySendSponsoredCall({
+          walletProvider: injected,
+          from: connectedAddress,
+          chainId: 84532,
+          call: {
+            to: property.crowdfundAddress,
+            data,
+          },
+          paymasterUrl,
+        })
+        txHash = sponsored?.txHash || null
+      }
+
+      if (!txHash) {
+        const signer = await withSigner()
+        const crowdfund = new Contract(property.crowdfundAddress, CROWDFUND_ABI, signer)
+        setTxStatus('Submitting refund claim...')
+        const tx = await sendContractTransaction(signer, crowdfund, 'claimRefund')
+        await tx.wait()
+        txHash = tx.hash
+      }
+      if (!txHash) {
+        throw new Error('Refund transaction hash unavailable')
+      }
+
+      setTxStatus(`Refund confirmed: ${txHash}`)
       emitPortfolioActivity({
-        txHash: tx.hash,
+        txHash,
         propertyId: property.propertyId,
         type: 'claim-refund',
       })
@@ -1780,6 +1880,7 @@ export default function PropertyDetail() {
       txInFlight={txInFlight}
       walletAvailable={walletAvailable}
       canSwapOnBaseSepolia={canSwapOnBaseSepolia}
+      gasSponsorshipAvailable={gasSponsorshipAvailable}
       platformTokenSymbol={platformToken?.symbol || 'BRICKT'}
       canInvest={canInvest}
       canClaimEquity={canClaimEquity}

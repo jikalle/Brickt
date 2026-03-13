@@ -26,6 +26,7 @@ import {
 } from '../lib/portfolioActivity';
 import { env } from '../config/env';
 import TxHashLink from '../components/common/TxHashLink';
+import { getBasePaymasterUrl, trySendSponsoredCall } from '../lib/baseAccount';
 
 // Inline SVG Icons
 const ExternalLink = ({ className }: { className: string }) => (
@@ -176,6 +177,7 @@ export default function InvestorDashboard() {
   const isClaimingEquity = claimingEquityPropertyId !== null;
   const isClaimingAny = isClaimingProfit || isClaimingEquity;
   const builderDataSuffix = useMemo(() => toBuilderDataSuffix(env.BASE_BUILDER_CODES), []);
+  const gasSponsorshipAvailable = Boolean(env.BASE_SEPOLIA_PAYMASTER_URL);
 
   const loadPortfolio = useCallback(async () => {
     if (!canFetchInvestorData || !token) {
@@ -312,29 +314,49 @@ export default function InvestorDashboard() {
       }
       await ensureBaseSepolia(injected);
       await injected.request({ method: 'eth_requestAccounts' });
-      const provider = new BrowserProvider(injected as never);
-      const signer = await provider.getSigner();
-      const distributor = new Contract(status.profitDistributorAddress, PROFIT_DISTRIBUTOR_ABI, signer);
+      const distributor = new Contract(status.profitDistributorAddress, PROFIT_DISTRIBUTOR_ABI);
       const txData = distributor.interface.encodeFunctionData('claim', []);
-      const data = builderDataSuffix ? concat([txData, builderDataSuffix]) : txData;
-      const tx = await signer.sendTransaction({
-        to: status.profitDistributorAddress,
-        data,
+      const data = (builderDataSuffix ? concat([txData, builderDataSuffix]) : txData) as `0x${string}`;
+      let txHash: string | null = null;
+      const sponsored = await trySendSponsoredCall({
+        walletProvider: injected,
+        from: connectedWalletAddress || address || '',
+        chainId: 84532,
+        call: {
+          to: status.profitDistributorAddress,
+          data,
+        },
+        paymasterUrl: getBasePaymasterUrl(84532),
       });
-      await tx.wait();
+
+      if (sponsored?.txHash) {
+        txHash = sponsored.txHash;
+      } else {
+        const provider = new BrowserProvider(injected as never);
+        const signer = await provider.getSigner();
+        const tx = await signer.sendTransaction({
+          to: status.profitDistributorAddress,
+          data,
+        });
+        await tx.wait();
+        txHash = tx.hash;
+      }
+      if (!txHash) {
+        throw new Error('Profit claim transaction hash unavailable');
+      }
       emitPortfolioActivity({
-        txHash: tx.hash,
+        txHash,
         propertyId: status.propertyId,
         type: 'claim-profit',
       });
       addPendingClaim({
-        txHash: tx.hash,
+        txHash,
         propertyId: status.propertyId,
         type: 'claim-profit',
         createdAt: new Date().toISOString(),
       });
-      setStatusMessage(`Profit claim confirmed: ${tx.hash}`);
-      setClaimSuccessTxHash(tx.hash);
+      setStatusMessage(`Profit claim confirmed: ${txHash}`);
+      setClaimSuccessTxHash(txHash);
       await loadPortfolio();
     } catch (error) {
       setClaimSuccessTxHash(null);
@@ -360,29 +382,48 @@ export default function InvestorDashboard() {
       }
       await ensureBaseSepolia(injected);
       await injected.request({ method: 'eth_requestAccounts' });
-      const provider = new BrowserProvider(injected as never);
-      const signer = await provider.getSigner();
-      const campaign = new Contract(status.campaignAddress, CROWDFUND_ABI, signer);
+      const campaign = new Contract(status.campaignAddress, CROWDFUND_ABI);
       const txData = campaign.interface.encodeFunctionData('claimTokens', []);
-      const data = builderDataSuffix ? concat([txData, builderDataSuffix]) : txData;
-      const tx = await signer.sendTransaction({
-        to: status.campaignAddress,
-        data,
+      const data = (builderDataSuffix ? concat([txData, builderDataSuffix]) : txData) as `0x${string}`;
+      let txHash: string | null = null;
+      const sponsored = await trySendSponsoredCall({
+        walletProvider: injected,
+        from: connectedWalletAddress || address || '',
+        chainId: 84532,
+        call: {
+          to: status.campaignAddress,
+          data,
+        },
+        paymasterUrl: getBasePaymasterUrl(84532),
       });
-      await tx.wait();
+      if (sponsored?.txHash) {
+        txHash = sponsored.txHash;
+      } else {
+        const provider = new BrowserProvider(injected as never);
+        const signer = await provider.getSigner();
+        const tx = await signer.sendTransaction({
+          to: status.campaignAddress,
+          data,
+        });
+        await tx.wait();
+        txHash = tx.hash;
+      }
+      if (!txHash) {
+        throw new Error('Equity claim transaction hash unavailable');
+      }
       emitPortfolioActivity({
-        txHash: tx.hash,
+        txHash,
         propertyId: status.propertyId,
         type: 'claim-equity',
       });
       addPendingClaim({
-        txHash: tx.hash,
+        txHash,
         propertyId: status.propertyId,
         type: 'claim-equity',
         createdAt: new Date().toISOString(),
       });
-      setStatusMessage(`Equity claim confirmed: ${tx.hash}`);
-      setClaimSuccessTxHash(tx.hash);
+      setStatusMessage(`Equity claim confirmed: ${txHash}`);
+      setClaimSuccessTxHash(txHash);
       await loadPortfolio();
     } catch (error) {
       setClaimSuccessTxHash(null);
@@ -885,6 +926,9 @@ export default function InvestorDashboard() {
                 Priority queue
               </p>
             </div>
+            {gasSponsorshipAvailable ? (
+              <p className="mb-4 text-xs text-cyan-300">Gas sponsorship is available for supported Base wallets.</p>
+            ) : null}
 
             {!canFetchInvestorData ? (
               <p className="text-slate-400">Authenticate to view claim opportunities.</p>
