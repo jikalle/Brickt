@@ -19,15 +19,19 @@ dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC_URL || '';
 const DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 const ANTHROPIC = process.env.ANTHROPIC_API_KEY || '';
+const OPENAI = process.env.OPENAI_API_KEY || '';
 const OPERATOR_KEY = process.env.PLATFORM_OPERATOR_PRIVATE_KEY || process.env.PRIVATE_KEY || '';
 const PORT = Number(process.env.AGENT_PORT || 3001);
 const POLL_MS = Number(process.env.AGENT_POLL_INTERVAL_MS || 20000);
 const IS_TESTNET = RPC_URL.includes('sepolia');
 const CHAIN_ID = Number(process.env.BASE_SEPOLIA_CHAIN_ID || 84532);
+const LLM_PROVIDER = OPENAI ? 'openai' : ANTHROPIC ? 'anthropic' : '';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 
 if (!RPC_URL) throw new Error('Missing BASE_SEPOLIA_RPC_URL or BASE_MAINNET_RPC_URL');
 if (!DB_URL) throw new Error('Missing DATABASE_URL');
-if (!ANTHROPIC) throw new Error('Missing ANTHROPIC_API_KEY');
+if (!LLM_PROVIDER) throw new Error('Missing OPENAI_API_KEY or ANTHROPIC_API_KEY');
 if (!OPERATOR_KEY) throw new Error('Missing PLATFORM_OPERATOR_PRIVATE_KEY');
 
 const pool = new pg.Pool({ connectionString: DB_URL });
@@ -91,7 +95,7 @@ async function logActivity({
   }
 }
 
-async function askClaude(systemPrompt, userPrompt) {
+async function askAnthropic(systemPrompt, userPrompt) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -100,7 +104,7 @@ async function askClaude(systemPrompt, userPrompt) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: ANTHROPIC_MODEL,
       max_tokens: 512,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -109,11 +113,45 @@ async function askClaude(systemPrompt, userPrompt) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Claude API error ${response.status}: ${text}`);
+    throw new Error(`Anthropic API error ${response.status}: ${text}`);
   }
 
   const data = await response.json();
   return data.content?.[0]?.text?.trim() || '(no response)';
+}
+
+async function askOpenAI(systemPrompt, userPrompt) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      temperature: 0.2,
+      max_tokens: 512,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`OpenAI API error ${response.status}: ${text}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content?.trim() || '(no response)';
+}
+
+async function askModel(systemPrompt, userPrompt) {
+  if (LLM_PROVIDER === 'openai') {
+    return askOpenAI(systemPrompt, userPrompt);
+  }
+  return askAnthropic(systemPrompt, userPrompt);
 }
 
 const AGENT_SYSTEM_PROMPT = `You are the Brickt Investment Agent — a user-facing autonomous AI managing real estate crowdfunding pools on Base blockchain for African markets.
@@ -224,7 +262,7 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
 
       if (snap.canFinalize && snap.owner === agentAddress) {
         const outcome = snap.isTargetReached ? 'SUCCESS' : 'FAILED';
-        const reasoning = await askClaude(
+        const reasoning = await askModel(
           AGENT_SYSTEM_PROMPT,
           `I am about to finalize this campaign as ${outcome}. Explain this decision to investors:\n\n${context}`
         );
@@ -254,7 +292,7 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
           severity: outcome === 'SUCCESS' ? 'success' : 'warning',
         });
       } else if (!snap.canFinalize && snap.state === 'ACTIVE' && Math.random() < 0.2) {
-        const reasoning = await askClaude(
+        const reasoning = await askModel(
           AGENT_SYSTEM_PROMPT,
           `Give a brief status update for this active campaign:\n\n${context}`
         );
@@ -284,7 +322,7 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
       const snap = await getCampaignSnapshot(addr);
       if (!snap.canSetEquity || snap.owner !== agentAddress) continue;
 
-      const reasoning = await askClaude(
+      const reasoning = await askModel(
         AGENT_SYSTEM_PROMPT,
         `I am linking the equity token (${equityAddr}) to the successfully funded campaign at ${addr}. Explain this to investors in 2-3 sentences.`
       );
@@ -340,7 +378,7 @@ async function handleChat(message) {
     }
   } catch {}
 
-  const response = await askClaude(CHAT_SYSTEM + recentActivity, message);
+  const response = await askModel(CHAT_SYSTEM + recentActivity, message);
   await logActivity({
     eventType: 'CHAT_RESPONSE',
     reasoning: response,
@@ -426,7 +464,7 @@ server.listen(PORT, async () => {
   console.log(`[agent] started on port ${PORT}`);
   await logActivity({
     eventType: 'AGENT_STARTED',
-    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Wallet address: ${agentAddress}. Monitoring active campaigns every ${POLL_MS / 1000}s and executing on-chain decisions autonomously.`,
+    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Wallet address: ${agentAddress}. Monitoring active campaigns every ${POLL_MS / 1000}s and executing on-chain decisions autonomously using ${LLM_PROVIDER}.`,
     severity: 'info',
   });
 
