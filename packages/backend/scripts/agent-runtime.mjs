@@ -31,7 +31,6 @@ const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514
 
 if (!RPC_URL) throw new Error('Missing BASE_SEPOLIA_RPC_URL or BASE_MAINNET_RPC_URL');
 if (!DB_URL) throw new Error('Missing DATABASE_URL');
-if (!LLM_PROVIDER) throw new Error('Missing OPENAI_API_KEY or ANTHROPIC_API_KEY');
 if (!OPERATOR_KEY) throw new Error('Missing PLATFORM_OPERATOR_PRIVATE_KEY');
 
 const pool = new pg.Pool({ connectionString: DB_URL });
@@ -151,7 +150,58 @@ async function askModel(systemPrompt, userPrompt) {
   if (LLM_PROVIDER === 'openai') {
     return askOpenAI(systemPrompt, userPrompt);
   }
-  return askAnthropic(systemPrompt, userPrompt);
+  if (LLM_PROVIDER === 'anthropic') {
+    return askAnthropic(systemPrompt, userPrompt);
+  }
+  throw new Error('No LLM provider configured');
+}
+
+function isRetryableLlmError(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return (
+    message.includes('429') ||
+    message.includes('insufficient_quota') ||
+    message.includes('rate limit') ||
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('network')
+  );
+}
+
+function buildFallbackReasoning(kind, payload = {}) {
+  const propertyLabel = payload.propertyTitle || payload.propertyId || 'this property';
+  const raised = typeof payload.raisedUsdc === 'number' ? payload.raisedUsdc.toFixed(2) : null;
+  const target = typeof payload.targetUsdc === 'number' ? payload.targetUsdc.toFixed(2) : null;
+
+  switch (kind) {
+    case 'finalize_success':
+      return `${propertyLabel} reached its funding conditions, so the campaign has been finalized successfully. Investors can now expect the post-funding steps to continue, including withdrawal processing and equity setup where applicable.`;
+    case 'finalize_failed':
+      return `${propertyLabel} did not meet the required funding conditions before the campaign ended, so it has been finalized as unsuccessful. Investors should expect refund availability rather than equity issuance or profit distribution.`;
+    case 'monitor':
+      if (raised && target) {
+        return `${propertyLabel} is still active with ${raised} USDC raised against a ${target} USDC target. Investors can continue funding while the agent keeps monitoring the campaign for completion or expiry.`;
+      }
+      return `${propertyLabel} is still active and under monitoring. Investors can continue funding while the agent watches for campaign completion or expiry.`;
+    case 'equity_set':
+      return `${propertyLabel} has had its equity token linked to the funded campaign. Investors are now positioned for equity claim flows once the downstream setup and indexing complete.`;
+    case 'chat':
+      return `The autonomous agent is online, but live LLM reasoning is temporarily unavailable. Core monitoring and on-chain execution continue, and you can still rely on the activity feed for recent campaign actions.`;
+    case 'error':
+      return `The agent hit a temporary reasoning-provider issue and switched to deterministic fallback messaging. Monitoring and eligible on-chain actions will continue on the next cycle.`;
+    default:
+      return `The agent completed this step using deterministic fallback reasoning because the LLM provider was unavailable. Monitoring and on-chain execution continue normally.`;
+  }
+}
+
+async function explain(kind, userPrompt, payload = {}) {
+  try {
+    return await askModel(AGENT_SYSTEM_PROMPT, userPrompt);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    console.error('[agent] reasoning fallback:', message);
+    return buildFallbackReasoning(kind, payload);
+  }
 }
 
 const AGENT_SYSTEM_PROMPT = `You are the Brickt Investment Agent — a user-facing autonomous AI managing real estate crowdfunding pools on Base blockchain for African markets.
@@ -262,9 +312,17 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
 
       if (snap.canFinalize && snap.owner === agentAddress) {
         const outcome = snap.isTargetReached ? 'SUCCESS' : 'FAILED';
-        const reasoning = await askModel(
-          AGENT_SYSTEM_PROMPT,
-          `I am about to finalize this campaign as ${outcome}. Explain this decision to investors:\n\n${context}`
+        const raisedUsdc = Number(snap.raised) / 1e6;
+        const targetUsdc = Number(snap.target) / 1e6;
+        const reasoning = await explain(
+          snap.isTargetReached ? 'finalize_success' : 'finalize_failed',
+          `I am about to finalize this campaign as ${outcome}. Explain this decision to investors:\n\n${context}`,
+          {
+            propertyTitle: label,
+            propertyId: row.property_id,
+            raisedUsdc,
+            targetUsdc,
+          }
         );
 
         let txHash = null;
@@ -283,8 +341,8 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
           campaignAddress: addr,
           propertyId: row.property_id,
           eventType: `CAMPAIGN_FINALIZED_${outcome}`,
-          raisedUsdc: Number(snap.raised) / 1e6,
-          targetUsdc: Number(snap.target) / 1e6,
+          raisedUsdc,
+          targetUsdc,
           campaignState: outcome,
           reasoning,
           txHash,
@@ -292,9 +350,15 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
           severity: outcome === 'SUCCESS' ? 'success' : 'warning',
         });
       } else if (!snap.canFinalize && snap.state === 'ACTIVE' && Math.random() < 0.2) {
-        const reasoning = await askModel(
-          AGENT_SYSTEM_PROMPT,
-          `Give a brief status update for this active campaign:\n\n${context}`
+        const reasoning = await explain(
+          'monitor',
+          `Give a brief status update for this active campaign:\n\n${context}`,
+          {
+            propertyTitle: label,
+            propertyId: row.property_id,
+            raisedUsdc: Number(snap.raised) / 1e6,
+            targetUsdc: Number(snap.target) / 1e6,
+          }
         );
         await logActivity({
           campaignAddress: addr,
@@ -322,9 +386,12 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
       const snap = await getCampaignSnapshot(addr);
       if (!snap.canSetEquity || snap.owner !== agentAddress) continue;
 
-      const reasoning = await askModel(
-        AGENT_SYSTEM_PROMPT,
-        `I am linking the equity token (${equityAddr}) to the successfully funded campaign at ${addr}. Explain this to investors in 2-3 sentences.`
+      const reasoning = await explain(
+        'equity_set',
+        `I am linking the equity token (${equityAddr}) to the successfully funded campaign at ${addr}. Explain this to investors in 2-3 sentences.`,
+        {
+          propertyId: row.property_id,
+        }
       );
 
       let txHash = null;
@@ -378,7 +445,7 @@ async function handleChat(message) {
     }
   } catch {}
 
-  const response = await askModel(CHAT_SYSTEM + recentActivity, message);
+  const response = await explain('chat', message, {});
   await logActivity({
     eventType: 'CHAT_RESPONSE',
     reasoning: response,
@@ -475,7 +542,9 @@ server.listen(PORT, async () => {
       console.error('[agent] cycle error:', error instanceof Error ? error.message : error);
       await logActivity({
         eventType: 'AGENT_ERROR',
-        reasoning: `Agent encountered an error during monitoring cycle: ${error instanceof Error ? error.message : 'unknown error'}. Will retry on next cycle.`,
+        reasoning: isRetryableLlmError(error)
+          ? buildFallbackReasoning('error')
+          : `Agent encountered an error during monitoring cycle: ${error instanceof Error ? error.message : 'unknown error'}. Will retry on next cycle.`,
         severity: 'error',
       });
     }
