@@ -223,11 +223,13 @@ function ChatPanel({
   onSend,
   messages,
   loading,
+  requiresSignIn,
 }: {
   onClose: () => void;
   onSend: (msg: string) => void;
   messages: { role: 'user' | 'agent'; text: string }[];
   loading: boolean;
+  requiresSignIn: boolean;
 }) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -275,7 +277,9 @@ function ChatPanel({
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', minHeight: 200 }}>
         {messages.length === 0 && (
           <p style={{ color: '#444', fontSize: 12, fontFamily: '"Crimson Text", serif', fontStyle: 'italic' }}>
-            Ask me anything about the pools — funding status, investor returns, or what I'm doing on-chain.
+            {requiresSignIn
+              ? 'Sign in from the header first, then ask about funding status, investor returns, or what the agent is doing on-chain.'
+              : 'Ask me anything about the pools — funding status, investor returns, or what I\'m doing on-chain.'}
           </p>
         )}
         {messages.map((m, i) => (
@@ -314,7 +318,8 @@ function ChatPanel({
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-          placeholder="Ask the agent..."
+          placeholder={requiresSignIn ? 'Sign in from the header to chat...' : 'Ask the agent...'}
+          disabled={requiresSignIn}
           style={{
             flex: 1, background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(255,255,255,0.08)',
@@ -326,11 +331,11 @@ function ChatPanel({
         />
         <button
           onClick={handleSubmit}
-          disabled={loading || !input.trim()}
+          disabled={requiresSignIn || loading || !input.trim()}
           style={{
-            background: loading ? 'rgba(201,168,76,0.2)' : '#C9A84C',
+            background: requiresSignIn || loading ? 'rgba(201,168,76,0.2)' : '#C9A84C',
             border: 'none', borderRadius: 4,
-            padding: '0 14px', cursor: loading ? 'not-allowed' : 'pointer',
+            padding: '0 14px', cursor: requiresSignIn || loading ? 'not-allowed' : 'pointer',
             color: '#0a0a0a', fontFamily: '"Space Mono", monospace',
             fontSize: 11, fontWeight: 700,
           }}
@@ -346,6 +351,7 @@ function ChatPanel({
 
 export default function AgentDashboard() {
   const token = useSelector((state: RootState) => state.user.token);
+  const walletAddress = useSelector((state: RootState) => state.user.address);
   const [activities, setActivities]     = useState<AgentActivity[]>([]);
   const [status, setStatus]             = useState<AgentStatus>({ online: false });
   const [newIds, setNewIds]             = useState<Set<number>>(new Set());
@@ -541,6 +547,33 @@ export default function AgentDashboard() {
             </div>
           </div>
 
+          {!token && (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: '12px 14px',
+                border: '1px solid rgba(201,168,76,0.22)',
+                borderRadius: 6,
+                background: 'rgba(201,168,76,0.06)',
+                color: '#d8c58a',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: '0.1em', marginBottom: 4 }}>CHAT ACCESS REQUIRES APP SIGN-IN</div>
+                <div style={{ fontSize: 12, color: '#9b9372', fontFamily: '"Crimson Text", Georgia, serif' }}>
+                  {walletAddress
+                    ? 'Your wallet is connected, but the agent chat only unlocks after you complete app sign-in from the header.'
+                    : 'Connect your wallet and complete app sign-in from the header before chatting with the agent.'}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Filter pills */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
             {['all', 'success', 'info', 'warning', 'error'].map(f => (
@@ -628,7 +661,7 @@ export default function AgentDashboard() {
               (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 32px rgba(201,168,76,0.3)';
             }}
           >
-            ◈ CHAT WITH AGENT
+            {token ? '◈ CHAT WITH AGENT' : '◈ SIGN IN TO CHAT'}
           </button>
         )}
 
@@ -639,6 +672,7 @@ export default function AgentDashboard() {
             onSend={sendChat}
             messages={chatMessages}
             loading={chatLoading}
+            requiresSignIn={!token}
           />
         )}
       </div>
