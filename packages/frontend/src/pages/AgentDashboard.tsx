@@ -24,6 +24,8 @@ interface AgentActivity {
 interface AgentStatus {
   online: boolean;
   agentAddress?: string;
+  operatorAddress?: string | null;
+  hasDedicatedAgentKey?: boolean;
   network?: string;
   pollIntervalMs?: number;
   lastSeen?: string;
@@ -526,6 +528,16 @@ export default function AgentDashboard() {
                     {status.agentAddress}
                   </p>
                 )}
+                {status.hasDedicatedAgentKey !== undefined && (
+                  <p style={{ margin: '4px 0 0', fontSize: 10, color: '#555', fontFamily: 'monospace' }}>
+                    {status.hasDedicatedAgentKey ? 'Dedicated agent wallet active' : 'Using operator wallet as agent fallback'}
+                  </p>
+                )}
+                {status.operatorAddress ? (
+                  <p style={{ margin: '4px 0 0', fontSize: 10, color: '#2f2f2f', fontFamily: 'monospace' }}>
+                    operator {status.operatorAddress}
+                  </p>
+                ) : null}
               </div>
 
               {/* Stats */}

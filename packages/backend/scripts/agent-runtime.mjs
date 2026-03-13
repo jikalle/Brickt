@@ -20,6 +20,7 @@ const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || process.env.BASE_MAINNET_RPC
 const DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 const ANTHROPIC = process.env.ANTHROPIC_API_KEY || '';
 const OPENAI = process.env.OPENAI_API_KEY || '';
+const AGENT_KEY = process.env.AGENT_PRIVATE_KEY || '';
 const OPERATOR_KEY = process.env.PLATFORM_OPERATOR_PRIVATE_KEY || process.env.PRIVATE_KEY || '';
 const PORT = Number(process.env.AGENT_PORT || 3001);
 const POLL_MS = Number(process.env.AGENT_POLL_INTERVAL_MS || 20000);
@@ -31,13 +32,18 @@ const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514
 
 if (!RPC_URL) throw new Error('Missing BASE_SEPOLIA_RPC_URL or BASE_MAINNET_RPC_URL');
 if (!DB_URL) throw new Error('Missing DATABASE_URL');
-if (!OPERATOR_KEY) throw new Error('Missing PLATFORM_OPERATOR_PRIVATE_KEY');
+if (!AGENT_KEY && !OPERATOR_KEY) {
+  throw new Error('Missing AGENT_PRIVATE_KEY or PLATFORM_OPERATOR_PRIVATE_KEY');
+}
 
 const pool = new pg.Pool({ connectionString: DB_URL });
 const provider = new JsonRpcProvider(RPC_URL);
-const baseSigner = new Wallet(OPERATOR_KEY, provider);
+const activeAgentKey = AGENT_KEY || OPERATOR_KEY;
+const baseSigner = new Wallet(activeAgentKey, provider);
 const signer = new NonceManager(baseSigner);
 const agentAddress = baseSigner.address.toLowerCase();
+const operatorAddress = OPERATOR_KEY ? new Wallet(OPERATOR_KEY).address.toLowerCase() : null;
+const hasDedicatedAgentKey = Boolean(AGENT_KEY);
 
 const crowdfundReadAbi = [
   'function owner() view returns (address)',
@@ -493,6 +499,8 @@ const server = createServer(async (req, res) => {
       JSON.stringify({
         status: 'running',
         agentAddress,
+        operatorAddress,
+        hasDedicatedAgentKey,
         network: IS_TESTNET ? 'base-sepolia' : 'base-mainnet',
         pollIntervalMs: POLL_MS,
       })
@@ -531,7 +539,7 @@ server.listen(PORT, async () => {
   console.log(`[agent] started on port ${PORT}`);
   await logActivity({
     eventType: 'AGENT_STARTED',
-    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Wallet address: ${agentAddress}. Monitoring active campaigns every ${POLL_MS / 1000}s and executing on-chain decisions autonomously using ${LLM_PROVIDER}.`,
+    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Agent wallet: ${agentAddress}.${hasDedicatedAgentKey ? ' Dedicated agent key is active.' : ' Falling back to operator key because AGENT_PRIVATE_KEY is not set.'} Monitoring active campaigns every ${POLL_MS / 1000}s and executing on-chain decisions autonomously using ${LLM_PROVIDER || 'deterministic fallback'}.`,
     severity: 'info',
   });
 
