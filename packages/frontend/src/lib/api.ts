@@ -332,6 +332,7 @@ export interface AdminMetricsResponse {
       rpcConfigured: boolean;
       indexerHealthy: boolean;
       workersHealthy: boolean;
+      faucetHealthy?: boolean;
     };
     staleSubmittedIntents: number;
   };
@@ -380,6 +381,17 @@ export interface AdminMetricsResponse {
       orphanedFeeTransfers: number;
       settlementFailures24h: number;
     };
+  };
+  faucet?: {
+    enabled: boolean;
+    cdpConfigured: boolean;
+    walletCooldownMinutes: number;
+    ipCooldownMinutes: number;
+    requests24h: number;
+    successful24h: number;
+    failed24h: number;
+    pendingCount: number;
+    lastRequestedAt: string | null;
   };
 }
 

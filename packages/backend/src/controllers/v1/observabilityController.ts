@@ -4,6 +4,7 @@ import { getRequestMetricsSnapshot } from '../../middleware/requestMetrics.js';
 import { AuthenticatedRequest } from '../../middleware/auth.js';
 import { sequelize } from '../../db/index.js';
 import { sendError } from '../../lib/apiError.js';
+import { env } from '../../config/env.js';
 
 export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response) => {
   try {
@@ -164,6 +165,41 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
       `,
       { type: QueryTypes.SELECT }
     );
+    const faucetCdpConfigured = Boolean(
+      process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET
+    );
+    const faucetRows = await sequelize.query<{
+      requests24h: string;
+      successful24h: string;
+      failed24h: string;
+      pendingCount: string;
+      lastRequestedAt: string | null;
+    }>(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE requested_at >= NOW() - INTERVAL '24 hours')::text AS "requests24h",
+        COUNT(*) FILTER (WHERE status = 'confirmed' AND requested_at >= NOW() - INTERVAL '24 hours')::text AS "successful24h",
+        COUNT(*) FILTER (WHERE status = 'failed' AND requested_at >= NOW() - INTERVAL '24 hours')::text AS "failed24h",
+        COUNT(*) FILTER (WHERE status = 'pending')::text AS "pendingCount",
+        MAX(requested_at)::text AS "lastRequestedAt"
+      FROM faucet_requests
+      `,
+      { type: QueryTypes.SELECT }
+    ).catch((error) => {
+      const code = (error as { original?: { code?: string } })?.original?.code;
+      if (code === '42P01') {
+        return [
+          {
+            requests24h: '0',
+            successful24h: '0',
+            failed24h: '0',
+            pendingCount: '0',
+            lastRequestedAt: null,
+          },
+        ];
+      }
+      throw error;
+    });
 
     const toCount = (tableName: string) => {
       const row = intentRows.find((entry) => entry.table_name === tableName);
@@ -221,6 +257,7 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
           rpcConfigured: rpcUrlConfigured,
           indexerHealthy: stateRows.length > 0,
           workersHealthy: noWorkerModeEnabled ? true : staleSubmittedIntents === 0,
+          faucetHealthy: !process.env.FAUCET_ENABLED || !env.faucetEnabled ? true : faucetCdpConfigured,
         },
         staleSubmittedIntents,
       },
@@ -239,6 +276,17 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
           orphanedFeeTransfers: Number(anomalies.orphanedFeeTransfers ?? '0'),
           settlementFailures24h: Number(anomalies.settlementFailures24h ?? '0'),
         },
+      },
+      faucet: {
+        enabled: env.faucetEnabled,
+        cdpConfigured: faucetCdpConfigured,
+        walletCooldownMinutes: env.faucetWalletCooldownMinutes,
+        ipCooldownMinutes: env.faucetIpCooldownMinutes,
+        requests24h: Number(faucetRows[0]?.requests24h ?? '0'),
+        successful24h: Number(faucetRows[0]?.successful24h ?? '0'),
+        failed24h: Number(faucetRows[0]?.failed24h ?? '0'),
+        pendingCount: Number(faucetRows[0]?.pendingCount ?? '0'),
+        lastRequestedAt: faucetRows[0]?.lastRequestedAt ?? null,
       },
       api: metrics,
     });
