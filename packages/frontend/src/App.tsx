@@ -6,6 +6,7 @@ import InvestorDashboard from './pages/InvestorDashboard'
 import OwnerConsole from './pages/OwnerConsole'
 import AdminActivities from './pages/AdminActivities'
 import AdminSystemStatus from './pages/AdminSystemStatus'
+import AgentDashboard from './pages/AgentDashboard'
 import Disclosures from './pages/Disclosures'
 import NotFound from './pages/NotFound'
 import Navbar from './components/common/Navbar'
@@ -23,6 +24,7 @@ function App() {
             <Route path="/properties" element={<Properties />} />
             <Route path="/properties/:id" element={<PropertyDetail />} />
             <Route path="/dashboard" element={<InvestorDashboard />} />
+            <Route path="/agent" element={<AgentDashboard />} />
             <Route path="/admin" element={<OwnerConsole />} />
             <Route path="/owner" element={<OwnerConsole />} />
             <Route path="/admin/activities" element={<AdminActivities />} />

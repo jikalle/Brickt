@@ -19,6 +19,7 @@
     "process:campaign-lifecycle:watch": "pnpm build && CAMPAIGN_LIFECYCLE_CONTINUOUS=true node scripts/process-campaign-lifecycle.mjs",
     "process:intents:watch": "pnpm build && node scripts/start-intent-workers.mjs",
     "process:intents:watch:runtime": "node scripts/start-intent-workers.mjs",
+    "agent:run": "node scripts/agent-runtime.mjs",
     "migrate:profit-distributors": "pnpm build && node scripts/migrate-profit-distributors.mjs",
     "indexer:sync": "node --import tsx src/indexer/run.ts",
     "indexer:sync:tx": "pnpm build && node scripts/indexer-sync-tx.mjs",

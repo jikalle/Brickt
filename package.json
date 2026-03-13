@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "pnpm --parallel -r dev",
-    "dev:full": "bash -lc 'pnpm --parallel -r dev & pnpm --filter @homeshare/backend run process:intents:watch:runtime; wait'",
+    "dev:full": "bash -lc 'pnpm --parallel -r dev & pnpm --filter @homeshare/backend run process:intents:watch:runtime & pnpm --filter @homeshare/backend agent:run; wait'",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",

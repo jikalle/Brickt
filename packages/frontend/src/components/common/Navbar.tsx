@@ -298,6 +298,9 @@ export default function Navbar() {
               <Link to="/dashboard" className="text-slate-300 hover:text-white transition font-medium">
                 Dashboard
               </Link>
+              <Link to="/agent" className="text-slate-300 hover:text-white transition font-medium">
+                Agent
+              </Link>
               {canViewOwnerConsole && (
                 <Link to="/admin" className="text-slate-300 hover:text-white transition font-medium">
                   Admin
@@ -388,6 +391,13 @@ export default function Navbar() {
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 Dashboard
+              </Link>
+              <Link
+                to="/agent"
+                className="block px-4 py-2 text-slate-300 hover:text-white transition font-medium rounded hover:bg-slate-800/50"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Agent
               </Link>
               {canViewOwnerConsole && (
                 <Link

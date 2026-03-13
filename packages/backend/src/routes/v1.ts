@@ -51,6 +51,11 @@ import {
 import { getAdminMetrics } from '../controllers/v1/observabilityController.js';
 import { quoteAssetUsdc, quoteEthUsdc } from '../controllers/v1/quotesController.js';
 import { requestTestnetFunds } from '../controllers/v1/faucetController.js';
+import {
+  chatWithAgent,
+  getAgentStatus,
+  listAgentActivities,
+} from '../controllers/v1/agentController.js';
 
 const router: ExpressRouter = Router();
 
@@ -105,5 +110,8 @@ router.post('/admin/campaigns/repair-setup', auth, requireRole('owner'), repairC
 router.post('/admin/processing/run', auth, requireRole('owner'), runAdminProcessingNow);
 router.get('/admin/processing/last', auth, requireRole('owner'), getLastProcessingRun);
 router.get('/admin/metrics', auth, requireRole('owner'), getAdminMetrics);
+router.get('/agent/activities', listAgentActivities);
+router.get('/agent/status', getAgentStatus);
+router.post('/agent/chat', auth, chatWithAgent);
 
 export default router;
