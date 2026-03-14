@@ -153,6 +153,8 @@ const SWAP_ROUTER_ABI = [
   'function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)',
 ]
 
+const MAX_UINT256 = (1n << 256n) - 1n
+
 const BASE_SEPOLIA_CHAIN_ID_HEX = '0x14A34'
 const CAMPAIGN_ACTIVE_STATE = 'ACTIVE'
 const CAMPAIGN_FAILED_STATE = 'FAILED'
@@ -1285,6 +1287,57 @@ export default function PropertyDetail() {
     })
   }
 
+  const ensureTokenAllowance = async ({
+    signer,
+    token,
+    owner,
+    spender,
+    requiredAmount,
+    statusLabel,
+  }: {
+    signer: Awaited<ReturnType<BrowserProvider['getSigner']>>
+    token: Contract
+    owner: string
+    spender: string
+    requiredAmount: bigint
+    statusLabel: string
+  }): Promise<void> => {
+    const currentAllowance = BigInt(await token.allowance(owner, spender))
+    if (currentAllowance >= requiredAmount) {
+      return
+    }
+
+    setTxStatus(`${statusLabel} approval...`)
+    try {
+      const approveTx = await sendContractTransaction(signer, token, 'approve', [spender, requiredAmount])
+      await approveTx.wait()
+    } catch {
+      const resetTx = await sendContractTransaction(signer, token, 'approve', [spender, 0n])
+      await resetTx.wait()
+      const approveTx = await sendContractTransaction(signer, token, 'approve', [spender, MAX_UINT256])
+      await approveTx.wait()
+    }
+
+    const allowanceAfter = BigInt(await token.allowance(owner, spender))
+    if (allowanceAfter < requiredAmount) {
+      try {
+        const resetTx = await sendContractTransaction(signer, token, 'approve', [spender, 0n])
+        await resetTx.wait()
+        const approveTx = await sendContractTransaction(signer, token, 'approve', [spender, MAX_UINT256])
+        await approveTx.wait()
+      } catch {
+        // Fall through to final verification below.
+      }
+    }
+
+    const finalAllowance = BigInt(await token.allowance(owner, spender))
+    if (finalAllowance < requiredAmount) {
+      throw new Error(
+        `USDC allowance for ${spender} is still too low after approval. Required ${formatUnits(requiredAmount, 6)} USDC, current allowance is ${formatUnits(finalAllowance, 6)} USDC. Re-approve USDC in your wallet and retry.`
+      )
+    }
+  }
+
   const handleInvestWithUsdc = async () => {
     setTxError('')
     setTxStatus('')
@@ -1330,19 +1383,14 @@ export default function PropertyDetail() {
         )
       }
 
-      const allowance = (await usdc.allowance(signerAddress, property.crowdfundAddress)) as bigint
-      if (allowance < amountBaseUnits) {
-        setTxStatus('Submitting USDC approval...')
-        try {
-          const approveTx = await sendContractTransaction(signer, usdc, 'approve', [property.crowdfundAddress, amountBaseUnits])
-          await approveTx.wait()
-        } catch {
-          const resetTx = await sendContractTransaction(signer, usdc, 'approve', [property.crowdfundAddress, 0n])
-          await resetTx.wait()
-          const approveTx = await sendContractTransaction(signer, usdc, 'approve', [property.crowdfundAddress, amountBaseUnits])
-          await approveTx.wait()
-        }
-      }
+      await ensureTokenAllowance({
+        signer,
+        token: usdc,
+        owner: signerAddress,
+        spender: property.crowdfundAddress,
+        requiredAmount: amountBaseUnits,
+        statusLabel: 'Submitting USDC',
+      })
 
       setTxStatus('Submitting investment...')
       const investTx = await sendContractTransaction(signer, crowdfund, 'invest', [amountBaseUnits])
@@ -1673,9 +1721,14 @@ export default function PropertyDetail() {
         throw new Error('Swap returned 0 USDC.')
       }
 
-      setTxStatus('Approving USDC for investment...')
-      const approveTx = await sendContractTransaction(signer, usdc, 'approve', [property.crowdfundAddress, receivedUsdc])
-      await approveTx.wait()
+      await ensureTokenAllowance({
+        signer,
+        token: usdc,
+        owner: signerAddress,
+        spender: property.crowdfundAddress,
+        requiredAmount: receivedUsdc,
+        statusLabel: 'Approving USDC for investment',
+      })
 
       setTxStatus('Submitting investment with swapped USDC...')
       const investTx = await sendContractTransaction(signer, crowdfund, 'invest', [receivedUsdc])
