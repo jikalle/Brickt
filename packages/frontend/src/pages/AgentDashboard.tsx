@@ -29,6 +29,15 @@ interface AgentStatus {
   hasDedicatedAgentKey?: boolean;
   network?: string;
   pollIntervalMs?: number;
+  executionPolicy?: 'observe' | 'recommend' | 'execute';
+  canExecuteTransactions?: boolean;
+  capabilities?: {
+    monitor: boolean;
+    recommend: boolean;
+    execute: boolean;
+    propertyAwareChat: boolean;
+  };
+  executionGuards?: string[];
   lastSeen?: string;
   lastEvent?: string;
 }
@@ -530,6 +539,57 @@ export default function AgentDashboard() {
                   <p style={{ margin: '4px 0 0', fontSize: 10, color: '#2f2f2f', fontFamily: 'monospace' }}>
                     operator {status.operatorAddress}
                   </p>
+                ) : null}
+                {status.executionPolicy ? (
+                  <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: '#C9A84C',
+                        border: '1px solid rgba(201,168,76,0.24)',
+                        background: 'rgba(201,168,76,0.08)',
+                        padding: '3px 8px',
+                        borderRadius: 999,
+                        letterSpacing: '0.08em',
+                      }}
+                    >
+                      POLICY · {status.executionPolicy.toUpperCase()}
+                    </span>
+                    {status.capabilities?.monitor ? (
+                      <span style={{ fontSize: 10, color: '#666', border: '1px solid rgba(255,255,255,0.08)', padding: '3px 8px', borderRadius: 999 }}>
+                        MONITOR
+                      </span>
+                    ) : null}
+                    {status.capabilities?.recommend ? (
+                      <span style={{ fontSize: 10, color: '#6B9BC3', border: '1px solid rgba(107,155,195,0.24)', padding: '3px 8px', borderRadius: 999 }}>
+                        RECOMMEND
+                      </span>
+                    ) : null}
+                    {status.capabilities?.execute ? (
+                      <span style={{ fontSize: 10, color: '#5A8A5A', border: '1px solid rgba(90,138,90,0.24)', padding: '3px 8px', borderRadius: 999 }}>
+                        EXECUTE
+                      </span>
+                    ) : null}
+                    {status.capabilities?.propertyAwareChat ? (
+                      <span style={{ fontSize: 10, color: '#888', border: '1px solid rgba(255,255,255,0.08)', padding: '3px 8px', borderRadius: 999 }}>
+                        PROPERTY CHAT
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {status.executionGuards && status.executionGuards.length > 0 ? (
+                  <div style={{ marginTop: 10, maxWidth: 560 }}>
+                    <div style={{ fontSize: 10, color: '#555', letterSpacing: '0.08em', marginBottom: 6 }}>
+                      EXECUTION GUARDS
+                    </div>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      {status.executionGuards.map((guard) => (
+                        <div key={guard} style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
+                          • {guard}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
               </div>
 

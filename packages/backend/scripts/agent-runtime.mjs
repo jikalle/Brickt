@@ -27,6 +27,9 @@ const POLL_MS = Number(process.env.AGENT_POLL_INTERVAL_MS || 20000);
 const IS_TESTNET = RPC_URL.includes('sepolia');
 const CHAIN_ID = Number(process.env.BASE_SEPOLIA_CHAIN_ID || 84532);
 const LLM_PROVIDER = OPENAI ? 'openai' : ANTHROPIC ? 'anthropic' : '';
+const EXECUTION_POLICY = ['observe', 'recommend', 'execute'].includes(process.env.AGENT_EXECUTION_POLICY || '')
+  ? process.env.AGENT_EXECUTION_POLICY
+  : 'execute';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 
@@ -44,6 +47,8 @@ const signer = new NonceManager(baseSigner);
 const agentAddress = baseSigner.address.toLowerCase();
 const operatorAddress = OPERATOR_KEY ? new Wallet(OPERATOR_KEY).address.toLowerCase() : null;
 const hasDedicatedAgentKey = Boolean(AGENT_KEY);
+const canExecuteTransactions = EXECUTION_POLICY === 'execute';
+const canRecommendActions = EXECUTION_POLICY === 'recommend' || EXECUTION_POLICY === 'execute';
 
 const crowdfundReadAbi = [
   'function owner() view returns (address)',
@@ -364,7 +369,7 @@ Deadline passed: ${snap.isEnded ? 'Yes' : 'No'}
 Target reached: ${snap.isTargetReached ? 'Yes' : 'No'}
 Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' : 'FINALIZE_FAILED') : 'MONITOR'}`;
 
-      if (snap.canFinalize && snap.owner === agentAddress) {
+      if (snap.canFinalize && snap.owner === agentAddress && canExecuteTransactions) {
         const outcome = snap.isTargetReached ? 'SUCCESS' : 'FAILED';
         const raisedUsdc = Number(snap.raised) / 1e6;
         const targetUsdc = Number(snap.target) / 1e6;
@@ -438,7 +443,7 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
 
     try {
       const snap = await getCampaignSnapshot(addr);
-      if (!snap.canSetEquity || snap.owner !== agentAddress) continue;
+      if (!snap.canSetEquity || snap.owner !== agentAddress || !canExecuteTransactions) continue;
 
       const reasoning = await explain(
         'equity_set',
@@ -607,6 +612,20 @@ const server = createServer(async (req, res) => {
         hasDedicatedAgentKey,
         network: IS_TESTNET ? 'base-sepolia' : 'base-mainnet',
         pollIntervalMs: POLL_MS,
+        executionPolicy: EXECUTION_POLICY,
+        canExecuteTransactions,
+        capabilities: {
+          monitor: true,
+          recommend: canRecommendActions,
+          execute: canExecuteTransactions,
+          propertyAwareChat: true,
+        },
+        executionGuards: [
+          'campaign owner must match agent wallet before any write action',
+          'campaign must be in an eligible lifecycle state before execution',
+          'equity token can only be linked when the onchain slot is still unset',
+          'database, indexer, and rpc connectivity must remain healthy',
+        ],
       })
     );
     return;
@@ -646,7 +665,7 @@ server.listen(PORT, async () => {
   console.log(`[agent] started on port ${PORT}`);
   await logActivity({
     eventType: 'AGENT_STARTED',
-    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Agent wallet: ${agentAddress}.${hasDedicatedAgentKey ? ' Dedicated agent key is active.' : ' Falling back to operator key because AGENT_PRIVATE_KEY is not set.'} Monitoring active campaigns every ${POLL_MS / 1000}s and executing on-chain decisions autonomously using ${LLM_PROVIDER || 'deterministic fallback'}.`,
+    reasoning: `Brickt Investment Agent initialized on ${IS_TESTNET ? 'Base Sepolia testnet' : 'Base Mainnet'}. Agent wallet: ${agentAddress}.${hasDedicatedAgentKey ? ' Dedicated agent key is active.' : ' Falling back to operator key because AGENT_PRIVATE_KEY is not set.'} Monitoring active campaigns every ${POLL_MS / 1000}s with ${EXECUTION_POLICY} policy and ${LLM_PROVIDER || 'deterministic fallback'} reasoning.`,
     severity: 'info',
   });
 
