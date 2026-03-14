@@ -235,6 +235,54 @@ async function loadCampaigns() {
   return rows;
 }
 
+async function loadPropertyContext({ propertyId = null, campaignAddress = null } = {}) {
+  if (!propertyId && !campaignAddress) {
+    return null;
+  }
+
+  const conditions = [];
+  const params = [CHAIN_ID];
+
+  if (propertyId) {
+    params.push(propertyId);
+    conditions.push(`p.property_id = $${params.length}`);
+  }
+  if (campaignAddress) {
+    params.push(campaignAddress.toLowerCase());
+    conditions.push(`LOWER(c.contract_address) = $${params.length}`);
+  }
+
+  const { rows } = await pool.query(
+    `
+    SELECT
+      p.property_id,
+      p.name AS property_title,
+      p.description,
+      p.location,
+      p.best_for,
+      LOWER(c.contract_address) AS campaign_address,
+      c.state AS campaign_state,
+      c.start_time,
+      c.end_time,
+      c.target_amount_usdc::text AS target_usdc,
+      c.raised_amount_usdc::text AS raised_usdc,
+      LOWER(p.profit_distributor_address) AS profit_distributor_address,
+      LOWER(p.equity_token_address) AS equity_token_address
+    FROM properties p
+    LEFT JOIN campaigns c
+      ON c.property_id = p.id
+     AND c.chain_id = $1
+    WHERE p.archived_at IS NULL
+      AND (${conditions.join(' OR ')})
+    ORDER BY c.updated_at DESC NULLS LAST, c.created_at DESC NULLS LAST, p.updated_at DESC
+    LIMIT 1
+    `,
+    params
+  );
+
+  return rows[0] || null;
+}
+
 async function loadEquityCandidates() {
   const { rows } = await pool.query(
     `
@@ -430,7 +478,43 @@ Action to take: ${snap.canFinalize ? (snap.isTargetReached ? 'FINALIZE_SUCCESS' 
 
 const CHAT_SYSTEM = `You are the Brickt Investment Agent — a user-facing autonomous AI managing real estate crowdfunding pools on Base blockchain for African markets. You can explain campaign status, recent autonomous actions, and what happens next for investors. Be concise and factual.`;
 
-async function handleChat(message) {
+function buildPropertyFallbackResponse(message, context) {
+  if (!context) {
+    return buildFallbackReasoning('chat');
+  }
+
+  const propertyLabel = context.property_title || context.property_id || 'this property';
+  const raised = context.raised_usdc ? (Number(context.raised_usdc) / 1e6).toFixed(2) : null;
+  const target = context.target_usdc ? (Number(context.target_usdc) / 1e6).toFixed(2) : null;
+  const state = context.campaign_state || 'UNKNOWN';
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('claim')) {
+    if (state === 'WITHDRAWN') {
+      return `${propertyLabel} is already in its post-withdrawal stage, so the relevant investor path is checking equity and profit claim eligibility rather than new funding. Use the claim actions on the property page to see what your wallet can do right now.`;
+    }
+    if (state === 'FAILED') {
+      return `${propertyLabel} did not complete successfully, so investors should be looking for refunds rather than equity or profit claims. The refund action on the property page is the relevant next step.`;
+    }
+  }
+
+  if (state === 'ACTIVE' && raised && target) {
+    return `${propertyLabel} is currently active with ${raised} USDC raised against a ${target} USDC target. Investors can still participate while the agent continues monitoring the campaign for funding completion or expiry.`;
+  }
+  if (state === 'SUCCESS') {
+    return `${propertyLabel} has reached a successful funding state. The next investor-visible steps are withdrawal completion, equity token setup if needed, and eventual claim readiness as the lifecycle progresses.`;
+  }
+  if (state === 'WITHDRAWN') {
+    return `${propertyLabel} has moved beyond funding into the post-withdrawal stage. Investors should focus on equity claims, profit distribution status, and completed lifecycle actions rather than new investment access.`;
+  }
+  if (state === 'FAILED') {
+    return `${propertyLabel} ended unsuccessfully, so investors should expect refunds rather than equity issuance or profit distribution. Check the property action card for refund availability.`;
+  }
+
+  return `${propertyLabel} is currently in ${state} state. The property action card shows the active investor path, and the agent activity feed tracks the latest lifecycle actions tied to this campaign.`;
+}
+
+async function handleChat(message, payload = {}) {
   let recentActivity = '';
   try {
     const { rows } = await pool.query(`
@@ -451,8 +535,28 @@ async function handleChat(message) {
     }
   } catch {}
 
-  const response = await explain('chat', message, {});
+  const context = await loadPropertyContext(payload).catch(() => null);
+  const contextLines = context
+    ? `\n\nProperty context:
+- Property: ${context.property_title || context.property_id}
+- Property ID: ${context.property_id}
+- Location: ${context.location || 'Unknown'}
+- Best for: ${context.best_for || 'Unknown'}
+- Campaign: ${context.campaign_address || 'Unavailable'}
+- Campaign state: ${context.campaign_state || 'Unknown'}
+- Raised: ${context.raised_usdc ? `${(Number(context.raised_usdc) / 1e6).toFixed(2)} USDC` : 'Unknown'}
+- Target: ${context.target_usdc ? `${(Number(context.target_usdc) / 1e6).toFixed(2)} USDC` : 'Unknown'}
+- Profit distributor: ${context.profit_distributor_address || 'Unavailable'}
+- Equity token: ${context.equity_token_address || 'Unavailable'}`
+    : '';
+
+  let response = await explain('chat', `${message}${contextLines}${recentActivity}`, {});
+  if (!response || response === buildFallbackReasoning('chat')) {
+    response = buildPropertyFallbackResponse(message, context);
+  }
   await logActivity({
+    campaignAddress: context?.campaign_address || payload.campaignAddress || null,
+    propertyId: context?.property_id || payload.propertyId || null,
     eventType: 'CHAT_RESPONSE',
     reasoning: response,
     userMessage: message,
@@ -520,7 +624,10 @@ const server = createServer(async (req, res) => {
         if (!message) {
           throw new Error('message required');
         }
-        const response = await handleChat(message);
+        const response = await handleChat(message, {
+          propertyId: parsed.propertyId ? String(parsed.propertyId).trim() : null,
+          campaignAddress: parsed.campaignAddress ? String(parsed.campaignAddress).trim().toLowerCase() : null,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ response }));
       } catch (error) {

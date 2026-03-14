@@ -257,6 +257,30 @@ export interface ProfitClaimResponse {
   createdAt: string;
 }
 
+export interface AgentChatResponse {
+  response?: string;
+  error?: string;
+}
+
+export async function postAgentChat(
+  token: string,
+  payload: { message: string; propertyId?: string; campaignAddress?: string }
+): Promise<AgentChatResponse> {
+  const response = await fetch(`${API_V1_BASE}/agent/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String((data as { error?: string }).error || 'Agent not available'));
+  }
+  return data;
+}
+
 export interface InvestorProfitStatusResponse {
   propertyId: string;
   profitDistributorAddress: string;

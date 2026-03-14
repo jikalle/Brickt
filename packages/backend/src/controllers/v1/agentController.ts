@@ -132,8 +132,10 @@ export async function getAgentStatus(_req: Request, res: Response): Promise<void
 }
 
 export async function chatWithAgent(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const body = req.body as { message?: string };
+  const body = req.body as { message?: string; propertyId?: string; campaignAddress?: string };
   const message = body?.message?.trim();
+  const propertyId = typeof body?.propertyId === 'string' ? body.propertyId.trim() : null;
+  const campaignAddress = typeof body?.campaignAddress === 'string' ? body.campaignAddress.trim().toLowerCase() : null;
   if (!message) {
     sendError(res, 400, 'message required', 'validation_error');
     return;
@@ -150,6 +152,8 @@ export async function chatWithAgent(req: AuthenticatedRequest, res: Response): P
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
+        propertyId,
+        campaignAddress,
         userAddress: req.user?.address || null,
         userRole: req.user?.role || null,
       }),

@@ -17,6 +17,7 @@ import {
   fetchAssetUsdcQuote,
   fetchCampaign,
   fetchEthUsdcQuote,
+  postAgentChat,
   fetchProperty,
   fetchPropertyEquityClaims,
   fetchPropertyProfitClaims,
@@ -31,6 +32,8 @@ import { emitPortfolioActivity } from '../lib/portfolioActivity'
 import TxHashLink from '../components/common/TxHashLink'
 import { extractTxHashes } from '../lib/txHash'
 import { getBasePaymasterUrl, trySendSponsoredCall } from '../lib/baseAccount'
+import { useSelector } from 'react-redux'
+import type { RootState } from '../store'
 
 type AssetType = 'USDC' | 'ETH' | 'PLATFORM'
 type CampaignPhase = 'NOT_STARTED' | 'ACTIVE' | 'FAILED' | 'ENDED' | 'UNKNOWN'
@@ -94,6 +97,9 @@ type PropertyPremiumLayoutProps = {
   claimEquityUnavailableMessage?: string
   investUnavailableMessage?: string
   formatUsdcUnits: (value: bigint) => string
+  agentChatToken?: string | null
+  propertyId?: string
+  campaignAddress?: string
 }
 
 type StatCardProps = {
@@ -381,6 +387,9 @@ function PropertyPremiumLayout({
   claimEquityUnavailableMessage = 'No claimable equity yet.',
   investUnavailableMessage = 'Investment currently unavailable.',
   formatUsdcUnits,
+  agentChatToken,
+  propertyId,
+  campaignAddress,
 }: PropertyPremiumLayoutProps) {
   const safeProperty = property ?? {}
   const safeGalleryImages = Array.isArray(galleryImages) ? galleryImages.filter(isNonEmptyString) : []
@@ -398,6 +407,9 @@ function PropertyPremiumLayout({
   const showCompletionStamp = safeProperty.profitDistributed === true
   const showInvestSection = canInvest
   const showClaimsSection = !canInvest || canClaimEquity || canClaimProfit || canClaimRefund
+  const [agentPrompt, setAgentPrompt] = useState('')
+  const [agentReply, setAgentReply] = useState<string | null>(null)
+  const [agentLoading, setAgentLoading] = useState(false)
 
   const onAssetChange = (e: ChangeEvent<HTMLSelectElement>) => {
     setInvestAsset(e.target.value as AssetType)
@@ -409,6 +421,26 @@ function PropertyPremiumLayout({
       return
     }
     setAmountUsdc(e.target.value)
+  }
+
+  const handleAskAgent = async () => {
+    const message = agentPrompt.trim()
+    if (!message || !agentChatToken) return
+
+    setAgentLoading(true)
+    setAgentReply(null)
+    try {
+      const data = await postAgentChat(agentChatToken, {
+        message,
+        propertyId,
+        campaignAddress,
+      })
+      setAgentReply(data.response || data.error || 'No response.')
+    } catch (error) {
+      setAgentReply(error instanceof Error ? error.message : 'Could not reach the agent.')
+    } finally {
+      setAgentLoading(false)
+    }
   }
 
   return (
@@ -711,6 +743,48 @@ function PropertyPremiumLayout({
               </Section>
             ) : null}
 
+            <Section title="Ask Brickt Agent" eyebrow="Property Guidance">
+              <div className="space-y-4">
+                <p className="text-sm leading-6 text-slate-300">
+                  Ask about this property&apos;s current stage, whether investing still makes sense, or what happens next for investors.
+                </p>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <textarea
+                    value={agentPrompt}
+                    onChange={(event) => setAgentPrompt(event.target.value)}
+                    placeholder={
+                      agentChatToken
+                        ? 'Example: What stage is this property in, and what should investors expect next?'
+                        : 'Sign in from the header to ask the agent about this property...'
+                    }
+                    disabled={!agentChatToken || agentLoading}
+                    className="min-h-[110px] w-full resize-none rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <div className="mt-4 flex items-center justify-between gap-4">
+                    <p className="text-xs text-slate-400">
+                      {agentChatToken
+                        ? 'The answer is grounded in this property’s current campaign and lifecycle data.'
+                        : 'Complete app sign-in from the header to unlock property-aware agent chat.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAskAgent}
+                      disabled={!agentChatToken || agentLoading || !agentPrompt.trim()}
+                      className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {agentLoading ? 'Thinking...' : 'Ask Agent'}
+                    </button>
+                  </div>
+                </div>
+                {agentReply ? (
+                  <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/5 p-4">
+                    <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-cyan-300">Brickt Agent</p>
+                    <p className="text-sm leading-6 text-slate-200">{agentReply}</p>
+                  </div>
+                ) : null}
+              </div>
+            </Section>
+
             <Section title="Contract Details" eyebrow="Transparency">
               <div className="space-y-4 break-all font-mono text-xs text-slate-300">
                 <div>
@@ -734,6 +808,7 @@ const formatUsdcUnits = (amountBaseUnits: bigint): string =>
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
   const { address: connectedAddress } = useAccount()
+  const token = useSelector((state: RootState) => state.auth.token)
 
   const [property, setProperty] = useState<PropertyResponse | null>(null)
   const [campaign, setCampaign] = useState<CampaignResponse | null>(null)
@@ -1892,6 +1967,9 @@ export default function PropertyDetail() {
       claimEquityUnavailableMessage={claimEquityUnavailableMessage}
       investUnavailableMessage={investUnavailableMessage}
       formatUsdcUnits={formatUsdcUnits}
+      agentChatToken={token}
+      propertyId={property.propertyId}
+      campaignAddress={property.crowdfundAddress}
     />
   )
 }

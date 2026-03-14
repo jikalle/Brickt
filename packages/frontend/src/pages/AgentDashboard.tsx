@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { env } from '../config/env';
 import type { RootState } from '../store';
+import { postAgentChat } from '../lib/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -412,15 +413,7 @@ export default function AgentDashboard() {
     setChatMessages(prev => [...prev, { role: 'user', text: message }]);
     setChatLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/v1/agent/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message }),
-      });
-      const data = await res.json();
+      const data = await postAgentChat(token, { message });
       setChatMessages(prev => [...prev, { role: 'agent', text: data.response || data.error || 'No response.' }]);
     } catch {
       setChatMessages(prev => [...prev, { role: 'agent', text: 'Could not reach the agent. Is it running?' }]);
