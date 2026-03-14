@@ -65,6 +65,90 @@ const getPropertyFundingPhase = (
   return campaign.state === 'ACTIVE' ? 'ACTIVE' : 'UNKNOWN';
 };
 
+const StampSeal = ({
+  topText,
+  bottomText,
+  centerTop,
+  centerBottom,
+  accent,
+}: {
+  topText: string
+  bottomText: string
+  centerTop: string
+  centerBottom: string
+  accent: 'emerald' | 'amber'
+}) => {
+  const palette =
+    accent === 'amber'
+      ? {
+          shadow: 'drop-shadow(0 0 12px rgba(251,191,36,0.45))',
+          face:
+            'radial-gradient(circle at 32% 28%, rgba(255,251,235,0.98) 0%, rgba(254,243,199,0.96) 34%, rgba(252,211,77,0.9) 78%, rgba(245,158,11,0.82) 100%)',
+          faceInset: 'inset 0 2px 10px rgba(255,255,255,0.5), inset 0 -10px 18px rgba(146,64,14,0.18)',
+          outerBorder: 'border-amber-200/95',
+          innerBorder: 'border-amber-200/80',
+          outerShadow: 'inset 0 0 0 2.5px rgba(146,64,14,0.78), 0 0 0 1.5px rgba(253,230,138,0.35)',
+          innerShadow: 'inset 0 0 0 1px rgba(146,64,14,0.45)',
+          divider: 'border-amber-500/55',
+          glaze:
+            'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.22) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(146,64,14,0.08) 0%, transparent 54%)',
+        }
+      : {
+          shadow: 'drop-shadow(0 0 12px rgba(16,185,129,0.55))',
+          face:
+            'radial-gradient(circle at 32% 28%, rgba(255,255,255,0.96) 0%, rgba(232,245,238,0.96) 30%, rgba(199,230,214,0.94) 68%, rgba(164,214,190,0.92) 100%)',
+          faceInset: 'inset 0 2px 10px rgba(255,255,255,0.55), inset 0 -10px 18px rgba(6,95,70,0.18)',
+          outerBorder: 'border-emerald-300/95',
+          innerBorder: 'border-emerald-300/80',
+          outerShadow: 'inset 0 0 0 2.5px rgba(6,95,70,0.8), 0 0 0 1.5px rgba(167,243,208,0.45)',
+          innerShadow: 'inset 0 0 0 1px rgba(6,95,70,0.55)',
+          divider: 'border-emerald-400/60',
+          glaze:
+            'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.24) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(6,95,70,0.08) 0%, transparent 54%)',
+        };
+
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      style={{
+        transform: 'rotate(-18deg)',
+        width: 148,
+        height: 148,
+        filter: palette.shadow,
+      }}
+    >
+      <div className="absolute inset-[6px] rounded-full" style={{ background: palette.face, boxShadow: palette.faceInset }} />
+      <div className={`absolute inset-0 rounded-full border-[4px] ${palette.outerBorder}`} style={{ boxShadow: palette.outerShadow }} />
+      <div className={`absolute rounded-full border-[2px] ${palette.innerBorder}`} style={{ inset: 10, boxShadow: palette.innerShadow }} />
+
+      <svg className="absolute inset-0" viewBox="0 0 148 148" style={{ opacity: 0.9 }}>
+        <defs>
+          <path id={`seal-top-${centerTop}-${centerBottom}`} d="M 20,74 A 54,54 0 0,1 128,74" />
+          <path id={`seal-bottom-${centerTop}-${centerBottom}`} d="M 26,88 A 54,54 0 0,0 122,88" />
+        </defs>
+        <text fill="#111827" fontSize="11.5" fontWeight="800" letterSpacing="3.5" fontFamily="monospace" textAnchor="middle" stroke="rgba(255,255,255,0.18)" strokeWidth="0.45" paintOrder="stroke">
+          <textPath href={`#seal-top-${centerTop}-${centerBottom}`} startOffset="50%">{topText}</textPath>
+        </text>
+        <text fill="#111827" fontSize="10" fontWeight="700" letterSpacing="2" fontFamily="monospace" textAnchor="middle" opacity="0.72" stroke="rgba(255,255,255,0.16)" strokeWidth="0.35" paintOrder="stroke">
+          <textPath href={`#seal-bottom-${centerTop}-${centerBottom}`} startOffset="50%">{bottomText}</textPath>
+        </text>
+      </svg>
+
+      <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
+        <span className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900" style={{ fontFamily: 'monospace', textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)' }}>
+          {centerTop}
+        </span>
+        <div className={`w-10 border-t ${palette.divider}`} />
+        <span className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900" style={{ fontFamily: 'monospace', textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)' }}>
+          {centerBottom}
+        </span>
+      </div>
+
+      <div className="absolute inset-0 rounded-full" style={{ background: palette.glaze, mixBlendMode: 'screen' }} />
+    </div>
+  );
+};
+
 export default function Properties() {
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [campaignByPropertyId, setCampaignByPropertyId] = useState<Record<string, CampaignResponse>>({});
@@ -305,7 +389,8 @@ export default function Properties() {
                   fundingPhase === 'NOT_STARTED' && campaign?.startTime
                     ? formatCountdown(campaign.startTime, nowMs)
                     : null;
-                const showCompletionStamp = property.profitDistributed && fundingPhase === 'ENDED';
+                const showProfitSharedStamp = property.profitDistributed && fundingPhase === 'ENDED';
+                const showCompletedStamp = !property.profitDistributed && fundingPhase === 'ENDED';
 
                 return (
                   <div
@@ -354,117 +439,26 @@ export default function Properties() {
                 
                       </div>
 
-                      {showCompletionStamp ? (
+                      {showProfitSharedStamp ? (
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                          <div
-                            className="relative flex items-center justify-center"
-                            style={{
-                              transform: 'rotate(-18deg)',
-                              width: 148,
-                              height: 148,
-                              filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.55))',
-                            }}
-                          >
-                            {/* Ceramic face */}
-                            <div
-                              className="absolute inset-[6px] rounded-full"
-                              style={{
-                                background:
-                                  'radial-gradient(circle at 32% 28%, rgba(255,255,255,0.96) 0%, rgba(232,245,238,0.96) 30%, rgba(199,230,214,0.94) 68%, rgba(164,214,190,0.92) 100%)',
-                                boxShadow:
-                                  'inset 0 2px 10px rgba(255,255,255,0.55), inset 0 -10px 18px rgba(6,95,70,0.18)',
-                              }}
-                            />
-
-                            {/* Outer ring */}
-                            <div
-                              className="absolute inset-0 rounded-full border-[4px] border-emerald-300/95"
-                              style={{ boxShadow: 'inset 0 0 0 2.5px rgba(6,95,70,0.8), 0 0 0 1.5px rgba(167,243,208,0.45)' }}
-                            />
-                            {/* Inner ring */}
-                            <div
-                              className="absolute rounded-full border-[2px] border-emerald-300/80"
-                              style={{ inset: 10, boxShadow: 'inset 0 0 0 1px rgba(6,95,70,0.55)' }}
-                            />
-
-                            {/* Curved text top */}
-                            <svg
-                              className="absolute inset-0"
-                              viewBox="0 0 148 148"
-                              style={{ opacity: 0.9 }}
-                            >
-                              <defs>
-                                <path id="topArc" d="M 20,74 A 54,54 0 0,1 128,74" />
-                                <path id="bottomArc" d="M 26,88 A 54,54 0 0,0 122,88" />
-                              </defs>
-                              <text
-                                fill="#111827"
-                                fontSize="11.5"
-                                fontWeight="800"
-                                letterSpacing="3.5"
-                                fontFamily="monospace"
-                                textAnchor="middle"
-                                stroke="rgba(255,255,255,0.18)"
-                                strokeWidth="0.45"
-                                paintOrder="stroke"
-                              >
-                                <textPath href="#topArc" startOffset="50%">
-                                  INVESTMENT COMPLETE
-                                </textPath>
-                              </text>
-                              <text
-                                fill="#111827"
-                                fontSize="10"
-                                fontWeight="700"
-                                letterSpacing="2"
-                                fontFamily="monospace"
-                                textAnchor="middle"
-                                opacity="0.7"
-                                stroke="rgba(255,255,255,0.16)"
-                                strokeWidth="0.35"
-                                paintOrder="stroke"
-                              >
-                                <textPath href="#bottomArc" startOffset="50%">
-                                  ✦ VERIFIED ✦
-                                </textPath>
-                              </text>
-                            </svg>
-
-                            {/* Center text */}
-                            <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
-                              <span
-                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
-                                style={{
-                                  fontFamily: 'monospace',
-                                  textShadow:
-                                    '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
-                                }}
-                              >
-                                PROFIT
-                              </span>
-                              <div className="w-10 border-t border-emerald-400/60" />
-                              <span
-                                className="block text-[13px] font-black uppercase tracking-[0.22em] text-slate-900"
-                                style={{
-                                  fontFamily: 'monospace',
-                                  textShadow:
-                                    '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
-                                }}
-                              >
-                                SHARED
-                              </span>
-                            </div>
-
-                            {/* Ceramic glaze / texture overlay */}
-                            <div
-                              className="absolute inset-0 rounded-full"
-                              style={{
-                                background:
-                                  'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.24) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(6,95,70,0.08) 0%, transparent 54%)',
-                                mixBlendMode: 'screen',
-                              }}
-                            />
-                          </div>
+                          <StampSeal
+                            topText="INVESTMENT COMPLETE"
+                            bottomText="✦ VERIFIED ✦"
+                            centerTop="PROFIT"
+                            centerBottom="SHARED"
+                            accent="emerald"
+                          />
+                        </div>
+                      ) : null}
+                      {showCompletedStamp ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <StampSeal
+                            topText="CAMPAIGN COMPLETE"
+                            bottomText="✦ CLOSED ✦"
+                            centerTop="COMPLETE"
+                            centerBottom="STAGE"
+                            accent="amber"
+                          />
                         </div>
                       ) : null}
                     </div>

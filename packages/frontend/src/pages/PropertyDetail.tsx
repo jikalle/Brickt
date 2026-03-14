@@ -100,6 +100,7 @@ type PropertyPremiumLayoutProps = {
   agentChatToken?: string | null
   propertyId?: string
   campaignAddress?: string
+  campaignState?: string | null
 }
 
 type StatCardProps = {
@@ -313,6 +314,106 @@ const CompletionSeal = ({ className = '' }: { className?: string }) => (
   </div>
 )
 
+const CompletedSeal = ({ className = '' }: { className?: string }) => (
+  <div
+    className={`relative flex items-center justify-center ${className}`.trim()}
+    style={{
+      transform: 'rotate(-18deg)',
+      width: 148,
+      height: 148,
+      filter: 'drop-shadow(0 0 12px rgba(245,158,11,0.45))',
+    }}
+  >
+    <div
+      className="absolute inset-[6px] rounded-full"
+      style={{
+        background:
+          'radial-gradient(circle at 32% 28%, rgba(255,251,235,0.96) 0%, rgba(254,243,199,0.95) 30%, rgba(253,230,138,0.93) 68%, rgba(245,158,11,0.9) 100%)',
+        boxShadow:
+          'inset 0 2px 10px rgba(255,255,255,0.5), inset 0 -10px 18px rgba(146,64,14,0.18)',
+      }}
+    />
+
+    <div
+      className="absolute inset-0 rounded-full border-[4px] border-amber-200/95"
+      style={{ boxShadow: 'inset 0 0 0 2.5px rgba(120,53,15,0.8), 0 0 0 1.5px rgba(253,230,138,0.4)' }}
+    />
+    <div
+      className="absolute rounded-full border-[2px] border-amber-200/80"
+      style={{ inset: 10, boxShadow: 'inset 0 0 0 1px rgba(120,53,15,0.5)' }}
+    />
+
+    <svg className="absolute inset-0" viewBox="0 0 148 148" style={{ opacity: 0.9 }}>
+      <defs>
+        <path id="topArcCompletedDetail" d="M 20,74 A 54,54 0 0,1 128,74" />
+        <path id="bottomArcCompletedDetail" d="M 26,88 A 54,54 0 0,0 122,88" />
+      </defs>
+      <text
+        fill="#111827"
+        fontSize="11.5"
+        fontWeight="800"
+        letterSpacing="3.3"
+        fontFamily="monospace"
+        textAnchor="middle"
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth="0.45"
+        paintOrder="stroke"
+      >
+        <textPath href="#topArcCompletedDetail" startOffset="50%">
+          CAMPAIGN COMPLETE
+        </textPath>
+      </text>
+      <text
+        fill="#111827"
+        fontSize="10"
+        fontWeight="700"
+        letterSpacing="2"
+        fontFamily="monospace"
+        textAnchor="middle"
+        opacity="0.7"
+        stroke="rgba(255,255,255,0.16)"
+        strokeWidth="0.35"
+        paintOrder="stroke"
+      >
+        <textPath href="#bottomArcCompletedDetail" startOffset="50%">
+          ✦ CLOSED ✦
+        </textPath>
+      </text>
+    </svg>
+
+    <div className="relative flex flex-col items-center justify-center gap-0.5 text-center">
+      <span
+        className="block text-[13px] font-black uppercase tracking-[0.2em] text-slate-900"
+        style={{
+          fontFamily: 'monospace',
+          textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+        }}
+      >
+        COMPLETE
+      </span>
+      <div className="w-10 border-t border-amber-700/45" />
+      <span
+        className="block text-[13px] font-black uppercase tracking-[0.2em] text-slate-900"
+        style={{
+          fontFamily: 'monospace',
+          textShadow: '0 1px 0 rgba(255,255,255,0.28), 0 0 6px rgba(15,23,42,0.08)',
+        }}
+      >
+        STAGE
+      </span>
+    </div>
+
+    <div
+      className="absolute inset-0 rounded-full"
+      style={{
+        background:
+          'radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.22) 0%, transparent 58%), radial-gradient(ellipse at 68% 74%, rgba(120,53,15,0.08) 0%, transparent 54%)',
+        mixBlendMode: 'screen',
+      }}
+    />
+  </div>
+)
+
 const toBuilderDataSuffix = (codes: string[]): string | null => {
   if (codes.length === 0) {
     return null
@@ -392,6 +493,7 @@ function PropertyPremiumLayout({
   agentChatToken,
   propertyId,
   campaignAddress,
+  campaignState,
 }: PropertyPremiumLayoutProps) {
   const safeProperty = property ?? {}
   const safeGalleryImages = Array.isArray(galleryImages) ? galleryImages.filter(isNonEmptyString) : []
@@ -406,7 +508,8 @@ function PropertyPremiumLayout({
   const selectedImageExists = hasSelectedImage && safeGalleryImages.includes(selectedGalleryImage)
   const primaryImage = selectedImageExists ? selectedGalleryImage : safeGalleryImages[0] ?? null
   const googleMapsUrl = buildGoogleMapsCoordUrl(safeProperty.latitude, safeProperty.longitude)
-  const showCompletionStamp = safeProperty.profitDistributed === true
+  const showProfitSharedStamp = safeProperty.profitDistributed === true
+  const showCompletedStamp = !safeProperty.profitDistributed && campaignState === 'WITHDRAWN'
   const showInvestSection = canInvest
   const showClaimsSection = !canInvest || canClaimEquity || canClaimProfit || canClaimRefund
   const [agentPrompt, setAgentPrompt] = useState('')
@@ -520,9 +623,14 @@ function PropertyPremiumLayout({
                       )}
 
                       {/* Rubber Stamp Overlay */}
-                      {showCompletionStamp ? (
+                      {showProfitSharedStamp ? (
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                           <CompletionSeal />
+                        </div>
+                      ) : null}
+                      {showCompletedStamp ? (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <CompletedSeal />
                         </div>
                       ) : null}
                     </div>
@@ -2023,6 +2131,7 @@ export default function PropertyDetail() {
       agentChatToken={token}
       propertyId={property.propertyId}
       campaignAddress={property.crowdfundAddress}
+      campaignState={campaign?.state ?? null}
     />
   )
 }
