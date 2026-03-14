@@ -101,6 +101,7 @@ export const listCampaigns = async (req: Request, res: Response) => {
       FROM campaigns c
       JOIN properties p ON p.id = c.property_id
       WHERE c.chain_id = :chainId
+        AND p.archived_at IS NULL
         ${
           cursor
             ? 'AND (c.start_time, c.contract_address) > (:cursorStartTime, :cursorContractAddress)'
@@ -179,7 +180,9 @@ export const getCampaign = async (req: Request, res: Response) => {
         c.updated_at AS "updatedAt"
       FROM campaigns c
       JOIN properties p ON p.id = c.property_id
-      WHERE c.chain_id = :chainId AND c.contract_address = :campaignAddress
+      WHERE c.chain_id = :chainId
+        AND c.contract_address = :campaignAddress
+        AND p.archived_at IS NULL
       LIMIT 1
       `,
       {
@@ -229,6 +232,7 @@ export const listCampaignInvestments = async (req: Request, res: Response) => {
       JOIN properties p ON p.id = ci.property_id
       WHERE ci.chain_id = :chainId
         AND c.chain_id = :chainId
+        AND p.archived_at IS NULL
         AND c.contract_address = :campaignAddress
         ${
           cursor
@@ -291,6 +295,7 @@ export const listCampaignRefunds = async (req: Request, res: Response) => {
       JOIN properties p ON p.id = cr.property_id
       WHERE cr.chain_id = :chainId
         AND c.chain_id = :chainId
+        AND p.archived_at IS NULL
         AND c.contract_address = :campaignAddress
         ${
           cursor
