@@ -6,7 +6,7 @@ import { getAddress } from 'ethers';
 import { RootState } from '../store';
 import { setUser, clearUser } from '../store/slices/userSlice';
 import {
-  archiveAdminProperty,
+  archiveAdminPropertyByCrowdfund,
   approveProfitAllowance,
   createCloudinaryUploadSignature,
   createAdminIntentBatch,
@@ -33,7 +33,7 @@ import {
   resetAdminIntent,
   repairCampaignSetupAdmin,
   runAdminProcessingNow,
-  restoreAdminProperty,
+  restoreAdminPropertyByCrowdfund,
   retryAdminIntent,
   updateAdminProperty,
   withdrawCampaignFundsAdmin,
@@ -162,6 +162,9 @@ const loadCombinedHistory = (): CombinedSubmissionRecord[] => {
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
+
+const getPropertyRowKey = (property: AdminPropertyResponse): string =>
+  property.crowdfundAddress || property.propertyId;
 
 const uploadFormDataWithProgress = (
   url: string,
@@ -697,7 +700,7 @@ export default function OwnerConsole() {
     });
   }, [adminProperties, propertyCatalogQuery, propertyCatalogStatusFilter]);
   const filteredAdminPropertyIds = useMemo(
-    () => filteredAdminProperties.map((property) => property.propertyId),
+    () => filteredAdminProperties.map((property) => getPropertyRowKey(property)),
     [filteredAdminProperties]
   );
   const allFilteredSelected =
@@ -1952,20 +1955,21 @@ export default function OwnerConsole() {
     }
   };
 
-  const handleArchiveProperty = async (propertyId: string) => {
+  const handleArchiveProperty = async (property: AdminPropertyResponse) => {
     if (!token) return;
     const confirmed = window.confirm(
-      `Archive property "${propertyId}"? It will be hidden from public property listings.`
+      `Archive property "${property.propertyId}" for campaign ${property.crowdfundAddress}? It will be hidden from public property listings.`
     );
     if (!confirmed) return;
 
-    setPropertyActionLoadingId(propertyId);
+    const rowKey = getPropertyRowKey(property);
+    setPropertyActionLoadingId(rowKey);
     setErrorMessage('');
-    setStatusMessage(`Archiving property ${propertyId}...`);
+    setStatusMessage(`Archiving property ${property.propertyId}...`);
     try {
-      await archiveAdminProperty(token, propertyId);
+      await archiveAdminPropertyByCrowdfund(token, property.crowdfundAddress);
       await Promise.all([loadCampaigns(), loadAdminProperties(token)]);
-      setStatusMessage(`Property ${propertyId} archived.`);
+      setStatusMessage(`Property ${property.propertyId} archived.`);
     } catch (error) {
       setErrorMessage((error as Error).message);
       setStatusMessage('');
@@ -1974,15 +1978,16 @@ export default function OwnerConsole() {
     }
   };
 
-  const handleRestoreProperty = async (propertyId: string) => {
+  const handleRestoreProperty = async (property: AdminPropertyResponse) => {
     if (!token) return;
-    setPropertyActionLoadingId(propertyId);
+    const rowKey = getPropertyRowKey(property);
+    setPropertyActionLoadingId(rowKey);
     setErrorMessage('');
-    setStatusMessage(`Restoring property ${propertyId}...`);
+    setStatusMessage(`Restoring property ${property.propertyId}...`);
     try {
-      await restoreAdminProperty(token, propertyId);
+      await restoreAdminPropertyByCrowdfund(token, property.crowdfundAddress);
       await Promise.all([loadCampaigns(), loadAdminProperties(token)]);
-      setStatusMessage(`Property ${propertyId} restored.`);
+      setStatusMessage(`Property ${property.propertyId} restored.`);
     } catch (error) {
       setErrorMessage((error as Error).message);
       setStatusMessage('');
@@ -1991,9 +1996,11 @@ export default function OwnerConsole() {
     }
   };
 
-  const togglePropertySelection = (propertyId: string) => {
+  const togglePropertySelection = (propertyRowKey: string) => {
     setSelectedPropertyIds((prev) =>
-      prev.includes(propertyId) ? prev.filter((id) => id !== propertyId) : [...prev, propertyId]
+      prev.includes(propertyRowKey)
+        ? prev.filter((id) => id !== propertyRowKey)
+        : [...prev, propertyRowKey]
     );
   };
 
@@ -2010,8 +2017,7 @@ export default function OwnerConsole() {
   const handleBulkArchiveSelectedProperties = async () => {
     if (!token) return;
     const targets = adminProperties
-      .filter((property) => selectedPropertyIds.includes(property.propertyId) && !property.archivedAt)
-      .map((property) => property.propertyId);
+      .filter((property) => selectedPropertyIds.includes(getPropertyRowKey(property)) && !property.archivedAt);
     if (targets.length === 0) {
       setStatusMessage('No active selected properties to archive.');
       setErrorMessage('');
@@ -2024,7 +2030,9 @@ export default function OwnerConsole() {
     setStatusMessage(`Archiving ${targets.length} properties...`);
     setErrorMessage('');
     try {
-      await Promise.all(targets.map((propertyId) => archiveAdminProperty(token, propertyId)));
+      await Promise.all(
+        targets.map((property) => archiveAdminPropertyByCrowdfund(token, property.crowdfundAddress))
+      );
       await Promise.all([loadCampaigns(), loadAdminProperties(token)]);
       setSelectedPropertyIds([]);
       setStatusMessage(`Archived ${targets.length} properties.`);
@@ -2039,8 +2047,7 @@ export default function OwnerConsole() {
   const handleBulkRestoreSelectedProperties = async () => {
     if (!token) return;
     const targets = adminProperties
-      .filter((property) => selectedPropertyIds.includes(property.propertyId) && !!property.archivedAt)
-      .map((property) => property.propertyId);
+      .filter((property) => selectedPropertyIds.includes(getPropertyRowKey(property)) && !!property.archivedAt);
     if (targets.length === 0) {
       setStatusMessage('No archived selected properties to restore.');
       setErrorMessage('');
@@ -2051,7 +2058,9 @@ export default function OwnerConsole() {
     setStatusMessage(`Restoring ${targets.length} properties...`);
     setErrorMessage('');
     try {
-      await Promise.all(targets.map((propertyId) => restoreAdminProperty(token, propertyId)));
+      await Promise.all(
+        targets.map((property) => restoreAdminPropertyByCrowdfund(token, property.crowdfundAddress))
+      );
       await Promise.all([loadCampaigns(), loadAdminProperties(token)]);
       setSelectedPropertyIds([]);
       setStatusMessage(`Restored ${targets.length} properties.`);
@@ -4321,12 +4330,14 @@ export default function OwnerConsole() {
                         <tbody className="divide-y divide-white/5">
                           {filteredAdminProperties.map((property) => {
                             const isArchived = !!property.archivedAt;
-                            const isLoading = propertyActionLoadingId === property.propertyId;
+                            const rowKey = getPropertyRowKey(property);
+                            const isLoading = propertyActionLoadingId === rowKey;
                             return (
-                              <tr key={property.propertyId} className="bg-slate-900/30 hover:bg-slate-900/50 transition-colors">
+                              <tr key={rowKey} className="bg-slate-900/30 hover:bg-slate-900/50 transition-colors">
                                 <td className="px-3 py-2 align-middle">
                                   <div className="font-medium text-white">{property.propertyId}</div>
                                   <div className="text-xs text-slate-400">{property.name}</div>
+                                  <div className="mt-1 break-all text-[11px] text-slate-500">{property.crowdfundAddress}</div>
                                 </td>
                                 <td className="px-3 py-2 align-middle">
                                   <span
@@ -4355,7 +4366,7 @@ export default function OwnerConsole() {
                                     {isArchived ? (
                                       <button
                                         className="rounded border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-60 transition-all"
-                                        onClick={() => void handleRestoreProperty(property.propertyId)}
+                                        onClick={() => void handleRestoreProperty(property)}
                                         disabled={!canManageOwnerFlows || isLoading}
                                       >
                                         {isLoading ? 'Restoring...' : 'Restore'}
@@ -4363,7 +4374,7 @@ export default function OwnerConsole() {
                                     ) : (
                                       <button
                                         className="rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-xs text-amber-300 hover:bg-amber-500/20 disabled:opacity-60 transition-all"
-                                        onClick={() => void handleArchiveProperty(property.propertyId)}
+                                        onClick={() => void handleArchiveProperty(property)}
                                         disabled={!canManageOwnerFlows || isLoading}
                                       >
                                         {isLoading ? 'Archiving...' : 'Archive'}

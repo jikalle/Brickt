@@ -7,6 +7,7 @@ import { sendError } from '../../lib/apiError.js';
 import { AuthenticatedRequest } from '../../middleware/auth.js';
 import {
   BASE_SEPOLIA_CHAIN_ID,
+  normalizeAddress,
   ValidationError,
   parseEventCursor,
   parseLimit,
@@ -427,6 +428,58 @@ const selectPropertyById = async (propertyId: string): Promise<PropertyRow | nul
   return rows[0] ?? null;
 };
 
+const selectPropertyByCrowdfundAddress = async (crowdfundAddress: string): Promise<PropertyRow | null> => {
+  const rows: PropertyRow[] = await sequelize.query<PropertyRow>(
+    `
+    SELECT
+      id AS "propertyUuid",
+      property_id AS "propertyId",
+      name,
+      location,
+      description,
+      best_for AS "bestFor",
+      image_url AS "imageUrl",
+      COALESCE(
+        (
+          SELECT json_agg(pi.image_url ORDER BY pi.sort_order ASC, pi.created_at ASC)
+          FROM property_images pi
+          WHERE pi.property_id = properties.id
+        ),
+        '[]'::json
+      ) AS "imageUrls",
+      youtube_embed_url AS "youtubeEmbedUrl",
+      latitude::double precision AS "latitude",
+      longitude::double precision AS "longitude",
+      LOWER(crowdfund_contract_address) AS "crowdfundAddress",
+      LOWER(equity_token_address) AS "equityTokenAddress",
+      LOWER(profit_distributor_address) AS "profitDistributorAddress",
+      target_usdc_base_units::text AS "targetUsdcBaseUnits",
+      estimated_sell_usdc_base_units::text AS "estimatedSellUsdcBaseUnits",
+      conservative_sell_usdc_base_units::text AS "conservativeSellUsdcBaseUnits",
+      base_sell_usdc_base_units::text AS "baseSellUsdcBaseUnits",
+      optimistic_sell_usdc_base_units::text AS "optimisticSellUsdcBaseUnits",
+      conservative_multiplier_bps AS "conservativeMultiplierBps",
+      base_multiplier_bps AS "baseMultiplierBps",
+      optimistic_multiplier_bps AS "optimisticMultiplierBps",
+      archived_at AS "archivedAt",
+      created_at AS "createdAt",
+      updated_at AS "updatedAt"
+    FROM properties
+    WHERE chain_id = :chainId
+      AND LOWER(crowdfund_contract_address) = :crowdfundAddress
+    LIMIT 1
+    `,
+    {
+      type: QueryTypes.SELECT,
+      replacements: {
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+        crowdfundAddress,
+      },
+    }
+  );
+  return rows[0] ?? null;
+};
+
 export const listAdminProperties = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const includeArchived = req.query.includeArchived !== 'false';
@@ -743,6 +796,34 @@ export const archiveAdminProperty = async (req: AuthenticatedRequest, res: Respo
   }
 };
 
+export const archiveAdminPropertyByCrowdfund = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const crowdfundAddress = normalizeAddress(req.params.crowdfundAddress, 'crowdfundAddress');
+    await sequelize.query(
+      `
+      UPDATE properties
+      SET archived_at = NOW(),
+          updated_at = NOW()
+      WHERE chain_id = :chainId
+        AND LOWER(crowdfund_contract_address) = :crowdfundAddress
+      `,
+      {
+        replacements: {
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+          crowdfundAddress,
+        },
+      }
+    );
+    const property = await selectPropertyByCrowdfundAddress(crowdfundAddress);
+    if (!property) {
+      return sendError(res, 404, 'Property not found', 'not_found');
+    }
+    return res.json({ property });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
 export const restoreAdminProperty = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const propertyId = validatePropertyId(req.params.propertyId);
@@ -762,6 +843,34 @@ export const restoreAdminProperty = async (req: AuthenticatedRequest, res: Respo
       }
     );
     const property = await selectPropertyById(propertyId);
+    if (!property) {
+      return sendError(res, 404, 'Property not found', 'not_found');
+    }
+    return res.json({ property });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const restoreAdminPropertyByCrowdfund = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const crowdfundAddress = normalizeAddress(req.params.crowdfundAddress, 'crowdfundAddress');
+    await sequelize.query(
+      `
+      UPDATE properties
+      SET archived_at = NULL,
+          updated_at = NOW()
+      WHERE chain_id = :chainId
+        AND LOWER(crowdfund_contract_address) = :crowdfundAddress
+      `,
+      {
+        replacements: {
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+          crowdfundAddress,
+        },
+      }
+    );
+    const property = await selectPropertyByCrowdfundAddress(crowdfundAddress);
     if (!property) {
       return sendError(res, 404, 'Property not found', 'not_found');
     }

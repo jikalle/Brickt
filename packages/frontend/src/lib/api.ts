@@ -1308,12 +1308,54 @@ export async function archiveAdminProperty(
   return data.property as AdminPropertyResponse;
 }
 
+export async function archiveAdminPropertyByCrowdfund(
+  token: string,
+  crowdfundAddress: string
+): Promise<AdminPropertyResponse> {
+  const response = await fetch(
+    `${API_V1_BASE}/admin/properties/by-crowdfund/${encodeURIComponent(crowdfundAddress)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to archive property' }));
+    throw new Error(error.error || 'Failed to archive property');
+  }
+  const data = await response.json();
+  return data.property as AdminPropertyResponse;
+}
+
 export async function restoreAdminProperty(
   token: string,
   propertyId: string
 ): Promise<AdminPropertyResponse> {
   const response = await fetch(
     `${API_V1_BASE}/admin/properties/${encodeURIComponent(propertyId)}/restore`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to restore property' }));
+    throw new Error(error.error || 'Failed to restore property');
+  }
+  const data = await response.json();
+  return data.property as AdminPropertyResponse;
+}
+
+export async function restoreAdminPropertyByCrowdfund(
+  token: string,
+  crowdfundAddress: string
+): Promise<AdminPropertyResponse> {
+  const response = await fetch(
+    `${API_V1_BASE}/admin/properties/by-crowdfund/${encodeURIComponent(crowdfundAddress)}/restore`,
     {
       method: 'POST',
       headers: {

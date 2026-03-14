@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import { auth, requireRole } from '../middleware/auth.js';
 import {
   archiveAdminProperty,
+  archiveAdminPropertyByCrowdfund,
   getProperty,
   listAdminProperties,
   listEquityClaims,
@@ -9,6 +10,7 @@ import {
   listProfitDeposits,
   listProperties,
   restoreAdminProperty,
+  restoreAdminPropertyByCrowdfund,
   updateAdminProperty,
 } from '../controllers/v1/propertiesController.js';
 import {
@@ -89,6 +91,8 @@ router.get('/admin/properties', auth, requireRole('owner'), listAdminProperties)
 router.patch('/admin/properties/:propertyId', auth, requireRole('owner'), updateAdminProperty);
 router.delete('/admin/properties/:propertyId', auth, requireRole('owner'), archiveAdminProperty);
 router.post('/admin/properties/:propertyId/restore', auth, requireRole('owner'), restoreAdminProperty);
+router.delete('/admin/properties/by-crowdfund/:crowdfundAddress', auth, requireRole('owner'), archiveAdminPropertyByCrowdfund);
+router.post('/admin/properties/by-crowdfund/:crowdfundAddress/restore', auth, requireRole('owner'), restoreAdminPropertyByCrowdfund);
 router.post('/admin/intents/batch', auth, requireRole('owner'), createIntentBatch);
 router.post('/admin/profits/intents', auth, requireRole('owner'), createProfitDistributionIntent);
 router.post('/admin/profits/approve', auth, requireRole('owner'), approveProfitAllowance);
