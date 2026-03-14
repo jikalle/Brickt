@@ -417,6 +417,39 @@ export interface AdminMetricsResponse {
     pendingCount: number;
     lastRequestedAt: string | null;
   };
+  autonomousOps?: {
+    totals: {
+      total: number;
+      monitor: number;
+      ready_finalize: number;
+      ready_withdraw: number;
+      ready_repair: number;
+      ready_profit_flow: number;
+      blocked: number;
+      completed: number;
+      closed_failed: number;
+    };
+    campaigns: Array<{
+      propertyId: string;
+      campaignAddress: string;
+      state: string;
+      stage:
+        | 'monitor'
+        | 'ready_finalize'
+        | 'ready_withdraw'
+        | 'ready_repair'
+        | 'ready_profit_flow'
+        | 'blocked'
+        | 'completed'
+        | 'closed_failed';
+      recommendedAction: string;
+      raisedUsdcBaseUnits: string;
+      targetUsdcBaseUnits: string;
+      blockedReasons: string[];
+      latestAgentEventType: string | null;
+      latestAgentCreatedAt: string | null;
+    }>;
+  };
 }
 
 export interface FaucetRequestResponse {

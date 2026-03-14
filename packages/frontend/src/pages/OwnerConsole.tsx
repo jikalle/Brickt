@@ -288,6 +288,52 @@ const formatUsdcInput = (amount: number): string =>
     maximumFractionDigits: 6,
   });
 
+const formatUsdcBaseUnitsCompact = (value: string): string => {
+  const numeric = Number(value) / 1_000_000;
+  if (!Number.isFinite(numeric)) {
+    return '0';
+  }
+  return numeric.toLocaleString(undefined, { maximumFractionDigits: 0 });
+};
+
+const autonomousStageMeta: Record<
+  NonNullable<AdminMetricsResponse['autonomousOps']>['campaigns'][number]['stage'],
+  { label: string; tone: string }
+> = {
+  monitor: {
+    label: 'Monitor',
+    tone: 'border-slate-500/40 bg-slate-500/10 text-slate-200',
+  },
+  ready_finalize: {
+    label: 'Ready to Finalize',
+    tone: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200',
+  },
+  ready_withdraw: {
+    label: 'Ready to Withdraw',
+    tone: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+  },
+  ready_repair: {
+    label: 'Ready to Repair',
+    tone: 'border-violet-500/40 bg-violet-500/10 text-violet-200',
+  },
+  ready_profit_flow: {
+    label: 'Ready for Profit Flow',
+    tone: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+  },
+  blocked: {
+    label: 'Blocked',
+    tone: 'border-rose-500/40 bg-rose-500/10 text-rose-200',
+  },
+  completed: {
+    label: 'Completed',
+    tone: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+  },
+  closed_failed: {
+    label: 'Closed Failed',
+    tone: 'border-red-500/40 bg-red-500/10 text-red-200',
+  },
+};
+
 type MapPickerCenter = { lat: number; lng: number; zoom: number };
 type MapSearchResult = { lat: number; lng: number; label: string };
 const DEFAULT_MAP_PICKER_CENTER: MapPickerCenter = { lat: 6.5244, lng: 3.3792, zoom: 13 };
@@ -4396,6 +4442,123 @@ export default function OwnerConsole() {
 
               {activeTab === 'operations' && (
                 <>
+                  <div className="mb-8 rounded-[28px] border border-white/10 bg-[#08111f]/90 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                    <div className="mb-5 flex items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-semibold text-white">Autonomous Ops</h2>
+                        <p className="mt-1 text-sm text-slate-400">
+                          Deterministic campaign decisions derived from indexed state, queued intents, and recent agent activity.
+                        </p>
+                      </div>
+                      <Link
+                        to="/admin/system"
+                        className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 transition-all hover:bg-slate-800/60"
+                      >
+                        Open System Status
+                      </Link>
+                    </div>
+
+                    {!adminMetrics?.autonomousOps ? (
+                      <p className="text-slate-400">Autonomous ops data is not available yet.</p>
+                    ) : (
+                      <>
+                        <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            {
+                              label: 'Ready Now',
+                              value:
+                                adminMetrics.autonomousOps.totals.ready_finalize +
+                                adminMetrics.autonomousOps.totals.ready_withdraw +
+                                adminMetrics.autonomousOps.totals.ready_repair +
+                                adminMetrics.autonomousOps.totals.ready_profit_flow,
+                              tone: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+                            },
+                            {
+                              label: 'Blocked',
+                              value: adminMetrics.autonomousOps.totals.blocked,
+                              tone: 'border-rose-500/30 bg-rose-500/10 text-rose-200',
+                            },
+                            {
+                              label: 'Monitoring',
+                              value: adminMetrics.autonomousOps.totals.monitor,
+                              tone: 'border-slate-500/30 bg-slate-500/10 text-slate-200',
+                            },
+                            {
+                              label: 'Completed',
+                              value:
+                                adminMetrics.autonomousOps.totals.completed +
+                                adminMetrics.autonomousOps.totals.closed_failed,
+                              tone: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200',
+                            },
+                          ].map((card) => (
+                            <div key={card.label} className={`rounded-2xl border p-4 ${card.tone}`}>
+                              <div className="text-xs uppercase tracking-[0.2em]">{card.label}</div>
+                              <div className="mt-3 text-3xl font-semibold">{card.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="overflow-hidden rounded-lg border border-white/10">
+                          <div className="max-h-[28rem] overflow-auto">
+                            <table className="min-w-full text-sm">
+                              <thead className="sticky top-0 z-10 border-b border-white/10 bg-slate-900/80">
+                                <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                  <th className="px-3 py-2.5 font-semibold">Property</th>
+                                  <th className="px-3 py-2.5 font-semibold">Decision</th>
+                                  <th className="px-3 py-2.5 font-semibold">State</th>
+                                  <th className="px-3 py-2.5 font-semibold">Raised / Target</th>
+                                  <th className="px-3 py-2.5 font-semibold">Blocked By</th>
+                                  <th className="px-3 py-2.5 font-semibold">Latest Agent Event</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5">
+                                {adminMetrics.autonomousOps.campaigns.map((row) => {
+                                  const stage = autonomousStageMeta[row.stage];
+                                  return (
+                                    <tr
+                                      key={`${row.campaignAddress}-${row.stage}`}
+                                      className="bg-slate-900/30 transition-colors hover:bg-slate-900/50"
+                                    >
+                                      <td className="px-3 py-3 align-middle">
+                                        <div className="font-medium text-white">{row.propertyId}</div>
+                                        <div className="font-mono text-[11px] text-slate-500">
+                                          {row.campaignAddress.slice(0, 10)}...
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-3 align-middle">
+                                        <div className="flex flex-col items-start gap-1">
+                                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${stage.tone}`}>
+                                            {stage.label}
+                                          </span>
+                                          <span className="text-xs text-slate-400">{row.recommendedAction}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-3 align-middle text-slate-300">{row.state}</td>
+                                      <td className="px-3 py-3 align-middle font-mono text-xs text-slate-300">
+                                        {formatUsdcBaseUnitsCompact(row.raisedUsdcBaseUnits)} / {formatUsdcBaseUnitsCompact(row.targetUsdcBaseUnits)}
+                                      </td>
+                                      <td className="px-3 py-3 align-middle text-xs text-slate-400">
+                                        {row.blockedReasons.length > 0 ? row.blockedReasons.join(', ') : '—'}
+                                      </td>
+                                      <td className="px-3 py-3 align-middle text-xs text-slate-400">
+                                        <div>{row.latestAgentEventType || '—'}</div>
+                                        <div className="mt-1 text-[11px] text-slate-500">
+                                          {row.latestAgentCreatedAt
+                                            ? new Date(row.latestAgentCreatedAt).toLocaleString()
+                                            : 'No recent agent event'}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
                   {/* Campaign Overview */}
                   <div className="mb-8 rounded-[28px] border border-white/10 bg-[#08111f]/90 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                 <div className="mb-4 flex items-center justify-between">

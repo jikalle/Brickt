@@ -201,6 +201,117 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
       throw error;
     });
 
+    const autonomousRows = await sequelize.query<{
+      propertyId: string;
+      campaignAddress: string;
+      state: string;
+      raisedUsdcBaseUnits: string;
+      targetUsdcBaseUnits: string;
+      endTime: string | null;
+      equityTokenAddress: string | null;
+      profitDistributorAddress: string | null;
+      archivedAt: string | null;
+      propertyIntentPending: string;
+      propertyIntentFailed: string;
+      profitIntentPending: string;
+      profitIntentSubmitted: string;
+      profitIntentFailed: string;
+      platformFeeIntentPending: string;
+      platformFeeIntentSubmitted: string;
+      platformFeeIntentFailed: string;
+      profitDepositsIndexed: string;
+      latestAgentEventType: string | null;
+      latestAgentCreatedAt: string | null;
+    }>(
+      `
+      WITH latest_agent AS (
+        SELECT DISTINCT ON (LOWER(campaign_address))
+          LOWER(campaign_address) AS campaign_address,
+          event_type,
+          created_at
+        FROM agent_activities
+        WHERE campaign_address IS NOT NULL
+        ORDER BY LOWER(campaign_address), created_at DESC
+      ),
+      property_intent_stats AS (
+        SELECT
+          property_id,
+          SUM(CASE WHEN status IN ('pending', 'submitted') THEN 1 ELSE 0 END)::text AS pending_count,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::text AS failed_count
+        FROM property_intents
+        GROUP BY property_id
+      ),
+      profit_intent_stats AS (
+        SELECT
+          property_id,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)::text AS pending_count,
+          SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END)::text AS submitted_count,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::text AS failed_count
+        FROM profit_distribution_intents
+        GROUP BY property_id
+      ),
+      platform_fee_intent_stats AS (
+        SELECT
+          LOWER(campaign_address) AS campaign_address,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)::text AS pending_count,
+          SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END)::text AS submitted_count,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::text AS failed_count
+        FROM platform_fee_intents
+        GROUP BY LOWER(campaign_address)
+      ),
+      profit_deposit_stats AS (
+        SELECT
+          LOWER(campaign_address) AS campaign_address,
+          COUNT(*)::text AS indexed_count
+        FROM profit_deposits
+        GROUP BY LOWER(campaign_address)
+      )
+      SELECT
+        c.property_id AS "propertyId",
+        LOWER(c.contract_address) AS "campaignAddress",
+        c.state,
+        c.raised_usdc_base_units::text AS "raisedUsdcBaseUnits",
+        c.target_usdc_base_units::text AS "targetUsdcBaseUnits",
+        c.end_time::text AS "endTime",
+        LOWER(NULLIF(p.equity_token_address, '')) AS "equityTokenAddress",
+        LOWER(NULLIF(p.profit_distributor_address, '')) AS "profitDistributorAddress",
+        p.archived_at::text AS "archivedAt",
+        COALESCE(pis.pending_count, '0') AS "propertyIntentPending",
+        COALESCE(pis.failed_count, '0') AS "propertyIntentFailed",
+        COALESCE(pris.pending_count, '0') AS "profitIntentPending",
+        COALESCE(pris.submitted_count, '0') AS "profitIntentSubmitted",
+        COALESCE(pris.failed_count, '0') AS "profitIntentFailed",
+        COALESCE(pfis.pending_count, '0') AS "platformFeeIntentPending",
+        COALESCE(pfis.submitted_count, '0') AS "platformFeeIntentSubmitted",
+        COALESCE(pfis.failed_count, '0') AS "platformFeeIntentFailed",
+        COALESCE(pds.indexed_count, '0') AS "profitDepositsIndexed",
+        la.event_type AS "latestAgentEventType",
+        la.created_at::text AS "latestAgentCreatedAt"
+      FROM campaigns c
+      JOIN properties p
+        ON p.chain_id = c.chain_id
+       AND p.property_id = c.property_id
+       AND LOWER(p.crowdfund_contract_address) = LOWER(c.contract_address)
+      LEFT JOIN property_intent_stats pis
+        ON pis.property_id = c.property_id
+      LEFT JOIN profit_intent_stats pris
+        ON pris.property_id = c.property_id
+      LEFT JOIN platform_fee_intent_stats pfis
+        ON pfis.campaign_address = LOWER(c.contract_address)
+      LEFT JOIN profit_deposit_stats pds
+        ON pds.campaign_address = LOWER(c.contract_address)
+      LEFT JOIN latest_agent la
+        ON la.campaign_address = LOWER(c.contract_address)
+      WHERE c.chain_id = :chainId
+        AND p.archived_at IS NULL
+      ORDER BY c.created_at DESC
+      `,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { chainId: env.baseSepoliaChainId ?? 84532 },
+      }
+    );
+
     const toCount = (tableName: string) => {
       const row = intentRows.find((entry) => entry.table_name === tableName);
       return {
@@ -236,6 +347,104 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
       confirmed: propertyIntents.confirmed + profitIntents.confirmed + platformFeeIntents.confirmed,
       failed: propertyIntents.failed + profitIntents.failed + platformFeeIntents.failed,
     };
+
+    const nowMs = Date.now();
+    const autonomousCampaigns = autonomousRows.map((row) => {
+      const raised = BigInt(row.raisedUsdcBaseUnits ?? '0');
+      const target = BigInt(row.targetUsdcBaseUnits ?? '0');
+      const endMs = row.endTime ? Number(row.endTime) * 1000 : null;
+      const isEnded = typeof endMs === 'number' ? endMs <= nowMs : false;
+      const hasFailedOps =
+        Number(row.propertyIntentFailed) > 0 ||
+        Number(row.profitIntentFailed) > 0 ||
+        Number(row.platformFeeIntentFailed) > 0;
+      const hasPendingOps =
+        Number(row.propertyIntentPending) > 0 ||
+        Number(row.profitIntentPending) > 0 ||
+        Number(row.profitIntentSubmitted) > 0 ||
+        Number(row.platformFeeIntentPending) > 0 ||
+        Number(row.platformFeeIntentSubmitted) > 0;
+      const hasProfitDeposits = Number(row.profitDepositsIndexed) > 0;
+      const hasEquityToken = Boolean(row.equityTokenAddress);
+      let stage:
+        | 'monitor'
+        | 'ready_finalize'
+        | 'ready_withdraw'
+        | 'ready_repair'
+        | 'ready_profit_flow'
+        | 'blocked'
+        | 'completed'
+        | 'closed_failed' = 'monitor';
+      let recommendedAction = 'Monitor';
+      let blockedReasons: string[] = [];
+
+      if (row.state === 'FAILED') {
+        stage = 'closed_failed';
+        recommendedAction = 'Closed';
+      } else if (row.state === 'WITHDRAWN' && hasProfitDeposits) {
+        stage = 'completed';
+        recommendedAction = 'Completed';
+      } else if (hasFailedOps) {
+        stage = 'blocked';
+        recommendedAction = 'Investigate';
+        if (Number(row.propertyIntentFailed) > 0) blockedReasons.push('property intent failed');
+        if (Number(row.profitIntentFailed) > 0) blockedReasons.push('profit intent failed');
+        if (Number(row.platformFeeIntentFailed) > 0) blockedReasons.push('platform fee intent failed');
+      } else if (row.state === 'ACTIVE' && (raised >= target || isEnded)) {
+        stage = 'ready_finalize';
+        recommendedAction = 'Finalize';
+      } else if (row.state === 'SUCCESS') {
+        stage = 'ready_withdraw';
+        recommendedAction = 'Withdraw';
+      } else if (row.state === 'WITHDRAWN' && !hasEquityToken) {
+        stage = 'ready_repair';
+        recommendedAction = 'Repair setup';
+      } else if (row.state === 'WITHDRAWN' && !hasProfitDeposits) {
+        stage = hasPendingOps ? 'blocked' : 'ready_profit_flow';
+        recommendedAction = hasPendingOps ? 'Wait for queued settlement' : 'Submit profit flow';
+        if (hasPendingOps) blockedReasons.push('settlement intent already pending');
+      }
+
+      if (!rpcUrlConfigured) blockedReasons.push('rpc not configured');
+      if (stateRows.length === 0) blockedReasons.push('indexer not healthy');
+      if (!noWorkerModeEnabled && staleSubmittedIntents > 0) blockedReasons.push('worker backlog detected');
+      if (stage !== 'closed_failed' && stage !== 'completed' && blockedReasons.length > 0 && stage !== 'blocked') {
+        stage = 'blocked';
+        recommendedAction = 'Investigate';
+      }
+
+      return {
+        propertyId: row.propertyId,
+        campaignAddress: row.campaignAddress,
+        state: row.state,
+        stage,
+        recommendedAction,
+        raisedUsdcBaseUnits: row.raisedUsdcBaseUnits,
+        targetUsdcBaseUnits: row.targetUsdcBaseUnits,
+        blockedReasons,
+        latestAgentEventType: row.latestAgentEventType,
+        latestAgentCreatedAt: row.latestAgentCreatedAt,
+      };
+    });
+
+    const autonomousTotals = autonomousCampaigns.reduce(
+      (acc, row) => {
+        acc.total += 1;
+        acc[row.stage] += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        monitor: 0,
+        ready_finalize: 0,
+        ready_withdraw: 0,
+        ready_repair: 0,
+        ready_profit_flow: 0,
+        blocked: 0,
+        completed: 0,
+        closed_failed: 0,
+      }
+    );
 
     return res.json({
       timestamp: new Date().toISOString(),
@@ -287,6 +496,10 @@ export const getAdminMetrics = async (_req: AuthenticatedRequest, res: Response)
         failed24h: Number(faucetRows[0]?.failed24h ?? '0'),
         pendingCount: Number(faucetRows[0]?.pendingCount ?? '0'),
         lastRequestedAt: faucetRows[0]?.lastRequestedAt ?? null,
+      },
+      autonomousOps: {
+        totals: autonomousTotals,
+        campaigns: autonomousCampaigns.slice(0, 12),
       },
       api: metrics,
     });
