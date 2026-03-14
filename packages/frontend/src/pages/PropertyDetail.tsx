@@ -808,7 +808,7 @@ const formatUsdcUnits = (amountBaseUnits: bigint): string =>
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
   const { address: connectedAddress } = useAccount()
-  const token = useSelector((state: RootState) => state.auth.token)
+  const token = useSelector((state: RootState) => state.user.token)
 
   const [property, setProperty] = useState<PropertyResponse | null>(null)
   const [campaign, setCampaign] = useState<CampaignResponse | null>(null)
