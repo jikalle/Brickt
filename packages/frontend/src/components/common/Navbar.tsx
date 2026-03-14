@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useEffect, useMemo, useState } from 'react';
 import { RootState } from '../../store';
-import { setUser, setWalletAddress } from '../../store/slices/userSlice';
+import { setUser, setWalletAddress, clearUser } from '../../store/slices/userSlice';
 import { env } from '../../config/env';
 import { signInWithBaseAccount } from '../../lib/baseAccount';
 import { getAuthNonce, loginWithWallet, requestTestnetFunds, type FaucetRequestResponse } from '../../lib/api';
@@ -273,6 +273,13 @@ export default function Navbar() {
       dispatch(setWalletAddress(walletAddress));
     }
   }, [isConnected, walletAddress, dispatch]);
+
+  useEffect(() => {
+    if (!walletAddress || !address) return;
+    if (walletAddress.toLowerCase() !== address.toLowerCase()) {
+      dispatch(clearUser());
+    }
+  }, [walletAddress, address, dispatch]);
 
   return (
     <>

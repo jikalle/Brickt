@@ -1,13 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-interface UserState {
+export interface UserState {
   address: string | null;
   isAuthenticated: boolean;
   role: 'owner' | 'investor' | null;
   token: string | null;
 }
 
-const initialState: UserState = {
+export const initialUserState: UserState = {
   address: null,
   isAuthenticated: false,
   role: null,
@@ -16,7 +16,7 @@ const initialState: UserState = {
 
 const userSlice = createSlice({
   name: 'user',
-  initialState,
+  initialState: initialUserState,
   reducers: {
     setUser: (
       state,
