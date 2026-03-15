@@ -143,6 +143,7 @@ export default function Navbar() {
   const { role, isAuthenticated } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
   const { address: walletAddress, isConnected } = useAccount();
+  const { address } = useSelector((state: RootState) => state.user);
   const { connectAsync, connectors, isLoading, pendingConnector } = useConnect();
   const { disconnect } = useDisconnect();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
