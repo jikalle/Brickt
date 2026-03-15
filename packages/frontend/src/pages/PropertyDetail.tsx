@@ -829,7 +829,11 @@ function PropertyPremiumLayout({
                     disabled={txInFlight || !walletAvailable || !canClaimEquity}
                     className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Claim Equity
+                    {isClaimingEquity
+                      ? 'Claiming Equity...'
+                      : !canClaimEquity && hasClaimedEquity
+                        ? 'Equity Claimed'
+                        : 'Claim Equity'}
                   </button>
 
                   <button
@@ -838,7 +842,11 @@ function PropertyPremiumLayout({
                     disabled={txInFlight || !walletAvailable || !canClaimProfit}
                     className="w-full rounded-xl border border-white/10 p-3 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Claim Profit
+                    {isClaimingProfit
+                      ? 'Claiming Profit...'
+                      : !canClaimProfit && hasClaimedProfit
+                        ? 'Profit Claimed'
+                        : 'Claim Profit'}
                   </button>
 
                   <button
@@ -947,6 +955,8 @@ export default function PropertyDetail() {
   const [claimableProfitBaseUnits, setClaimableProfitBaseUnits] = useState<bigint | null>(null)
   const [claimableEquityBaseUnits, setClaimableEquityBaseUnits] = useState<bigint | null>(null)
   const [claimableEquityError, setClaimableEquityError] = useState('')
+  const [hasClaimedProfit, setHasClaimedProfit] = useState(false)
+  const [hasClaimedEquity, setHasClaimedEquity] = useState(false)
   const platformToken = useMemo(() => getBaseSepoliaPlatformToken(), [])
   const [nowMs, setNowMs] = useState(Date.now())
 
@@ -1100,6 +1110,35 @@ export default function PropertyDetail() {
   useEffect(() => {
     let cancelled = false
 
+    const loadProfitClaimHistory = async () => {
+      if (!property?.propertyId || !connectedAddress) {
+        setHasClaimedProfit(false)
+        return
+      }
+      try {
+        const claims = await fetchPropertyProfitClaims(property.propertyId)
+        if (cancelled) return
+        const normalized = connectedAddress.toLowerCase()
+        const claimed = claims.some(
+          (claim) => claim.claimerAddress?.toLowerCase() === normalized
+        )
+        setHasClaimedProfit(claimed)
+      } catch {
+        if (!cancelled) {
+          setHasClaimedProfit(false)
+        }
+      }
+    }
+
+    void loadProfitClaimHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [connectedAddress, property?.propertyId])
+
+  useEffect(() => {
+    let cancelled = false
+
     const loadClaimableEquity = async () => {
       if (!property?.crowdfundAddress || !connectedAddress) {
         setClaimableEquityBaseUnits(null)
@@ -1139,6 +1178,35 @@ export default function PropertyDetail() {
       clearInterval(timer)
     }
   }, [connectedAddress, property?.crowdfundAddress])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadEquityClaimHistory = async () => {
+      if (!property?.propertyId || !connectedAddress) {
+        setHasClaimedEquity(false)
+        return
+      }
+      try {
+        const claims = await fetchPropertyEquityClaims(property.propertyId)
+        if (cancelled) return
+        const normalized = connectedAddress.toLowerCase()
+        const claimed = claims.some(
+          (claim) => claim.claimantAddress?.toLowerCase() === normalized
+        )
+        setHasClaimedEquity(claimed)
+      } catch {
+        if (!cancelled) {
+          setHasClaimedEquity(false)
+        }
+      }
+    }
+
+    void loadEquityClaimHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [connectedAddress, property?.propertyId])
 
   useEffect(() => {
     if (investAsset === 'PLATFORM') {
@@ -1282,14 +1350,19 @@ export default function PropertyDetail() {
   const canClaimEquity = claimableEquityBaseUnits !== null && claimableEquityBaseUnits > 0n
   const canSwapOnBaseSepolia = Boolean(env.BASE_SEPOLIA_SWAP_ROUTER)
 
-  const claimProfitUnavailableMessage =
-    claimableProfitBaseUnits === null ? 'Unable to read claimable profit right now.' : 'No claimable profit yet.'
+  const claimProfitUnavailableMessage = hasClaimedProfit
+    ? 'Profit already claimed.'
+    : claimableProfitBaseUnits === null
+      ? 'Unable to read claimable profit right now.'
+      : 'No claimable profit yet.'
 
-  const claimEquityUnavailableMessage = claimableEquityError
-    ? claimableEquityError
-    : claimableEquityBaseUnits === null
-      ? 'Unable to read claimable equity right now.'
-      : 'No claimable equity yet.'
+  const claimEquityUnavailableMessage = hasClaimedEquity
+    ? 'Equity already claimed.'
+    : claimableEquityError
+      ? claimableEquityError
+      : claimableEquityBaseUnits === null
+        ? 'Unable to read claimable equity right now.'
+        : 'No claimable equity yet.'
 
   const investUnavailableMessage = useMemo(() => {
     if (isTargetReached) {
@@ -1932,6 +2005,7 @@ export default function PropertyDetail() {
       }
 
       setTxStatus(`Equity claim confirmed: ${txHash}`)
+      setHasClaimedEquity(true)
       emitPortfolioActivity({
         txHash,
         propertyId: property.propertyId,
@@ -2000,6 +2074,7 @@ export default function PropertyDetail() {
 
       setTxStatus(`Profit claim confirmed: ${txHash}`)
       setClaimableProfitBaseUnits(0n)
+      setHasClaimedProfit(true)
       emitPortfolioActivity({
         txHash,
         propertyId: property.propertyId,
