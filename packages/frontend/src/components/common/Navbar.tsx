@@ -143,7 +143,7 @@ export default function Navbar() {
   const { role, isAuthenticated } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
   const { address: walletAddress, isConnected } = useAccount();
-  const { address } = useSelector((state: RootState) => state.user);
+  const { address: userAddress } = useSelector((state: RootState) => state.user);
   const { connectAsync, connectors, isLoading, pendingConnector } = useConnect();
   const { disconnect } = useDisconnect();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
@@ -276,11 +276,11 @@ export default function Navbar() {
   }, [isConnected, walletAddress, dispatch]);
 
   useEffect(() => {
-    if (!walletAddress || !address) return;
-    if (walletAddress.toLowerCase() !== address.toLowerCase()) {
+    if (!walletAddress || !userAddress) return;
+    if (walletAddress.toLowerCase() !== userAddress.toLowerCase()) {
       dispatch(clearUser());
     }
-  }, [walletAddress, address, dispatch]);
+  }, [walletAddress, userAddress, dispatch]);
 
   return (
     <>

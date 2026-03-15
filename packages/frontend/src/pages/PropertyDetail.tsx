@@ -91,6 +91,10 @@ type PropertyPremiumLayoutProps = {
   canClaimEquity?: boolean
   canClaimProfit?: boolean
   canClaimRefund?: boolean
+  isClaimingEquity?: boolean
+  isClaimingProfit?: boolean
+  hasClaimedEquity?: boolean
+  hasClaimedProfit?: boolean
   claimableProfitBaseUnits?: bigint | null
   claimableEquityBaseUnits?: bigint | null
   claimProfitUnavailableMessage?: string
@@ -484,6 +488,10 @@ function PropertyPremiumLayout({
   canClaimEquity = false,
   canClaimProfit = false,
   canClaimRefund = false,
+  isClaimingEquity = false,
+  isClaimingProfit = false,
+  hasClaimedEquity = false,
+  hasClaimedProfit = false,
   claimableProfitBaseUnits,
   claimableEquityBaseUnits,
   claimProfitUnavailableMessage = 'No claimable profit yet.',
@@ -2197,6 +2205,10 @@ export default function PropertyDetail() {
       canClaimEquity={canClaimEquity}
       canClaimProfit={canClaimProfit}
       canClaimRefund={canClaimRefund}
+      isClaimingEquity={isClaimingEquity}
+      isClaimingProfit={isClaimingProfit}
+      hasClaimedEquity={hasClaimedEquity}
+      hasClaimedProfit={hasClaimedProfit}
       claimableProfitBaseUnits={claimableProfitBaseUnits}
       claimableEquityBaseUnits={claimableEquityBaseUnits}
       claimProfitUnavailableMessage={claimProfitUnavailableMessage}

@@ -394,7 +394,7 @@ export default function Properties() {
 
                 return (
                   <div
-                    key={property.propertyId}
+                    key={`${property.propertyId}:${property.crowdfundAddress}`}
                     className="group relative rounded-2xl overflow-hidden bg-slate-900/80 backdrop-blur border border-slate-700/50 transition-all duration-300 hover:border-emerald-500/50 hover:shadow-2xl hover:shadow-emerald-500/10"
                   >
                     {/* Image Container */}
