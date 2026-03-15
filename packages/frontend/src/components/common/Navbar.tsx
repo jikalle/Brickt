@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RootState } from '../../store';
 import { setUser, setWalletAddress, clearUser } from '../../store/slices/userSlice';
 import { env } from '../../config/env';
-import { signInWithBaseAccount } from '../../lib/baseAccount';
+import { signInWithBaseAccount, signInWithInjectedWallet } from '../../lib/baseAccount';
 import { getAuthNonce, loginWithWallet, requestTestnetFunds, type FaucetRequestResponse } from '../../lib/api';
 import TxHashLink from './TxHashLink';
 
@@ -142,7 +142,7 @@ export default function Navbar() {
   const { activeChainId } = useSelector((state: RootState) => state.chain);
   const { role, isAuthenticated, token } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
-  const { address: walletAddress, isConnected } = useAccount();
+  const { address: walletAddress, isConnected, connector } = useAccount();
   const { address: userAddress } = useSelector((state: RootState) => state.user);
   const { connectAsync, connectors, isLoading, pendingConnector } = useConnect();
   const { disconnect } = useDisconnect();
@@ -242,7 +242,11 @@ export default function Navbar() {
     setIsSigningWithBase(true);
     try {
       const { nonce } = await getAuthNonce();
-      const result = await signInWithBaseAccount({ nonce, chainId: 84532 });
+      const connectorId = connector?.id?.toLowerCase() || '';
+      const useBaseAccountFlow = connectorId.includes('coinbase') || connectorId.includes('base');
+      const result = useBaseAccountFlow
+        ? await signInWithBaseAccount({ nonce, chainId: 84532 })
+        : await signInWithInjectedWallet({ nonce, chainId: 84532 });
       const normalizedAddress = result.address.toLowerCase();
       const authRole: 'owner' | 'investor' = env.OWNER_ALLOWLIST.includes(normalizedAddress)
         ? 'owner'

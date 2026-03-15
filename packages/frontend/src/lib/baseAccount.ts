@@ -193,6 +193,18 @@ export async function signInWithBaseAccount(params: {
   }
 }
 
+export async function signInWithInjectedWallet(params: {
+  nonce: string;
+  chainId: number;
+}): Promise<{ address: string; message: string; signature: string }> {
+  const { nonce, chainId } = params;
+  const injected = getInjectedProvider();
+  if (!injected) {
+    throw new Error('No injected wallet provider available');
+  }
+  return signWithPersonalSign(injected, nonce, chainId);
+}
+
 export async function getWalletCapabilities(params: {
   walletProvider: Eip1193Provider;
   address: string;
