@@ -140,7 +140,7 @@ const isConnectorInstalled = (id: string, name: string, installed: Set<Extension
 
 export default function Navbar() {
   const { activeChainId } = useSelector((state: RootState) => state.chain);
-  const { role, isAuthenticated } = useSelector((state: RootState) => state.user);
+  const { role, isAuthenticated, token } = useSelector((state: RootState) => state.user);
   const dispatch = useDispatch();
   const { address: walletAddress, isConnected } = useAccount();
   const { address: userAddress } = useSelector((state: RootState) => state.user);
@@ -281,6 +281,18 @@ export default function Navbar() {
       dispatch(clearUser());
     }
   }, [walletAddress, userAddress, dispatch]);
+
+  useEffect(() => {
+    if (!isConnected || !walletAddress) return;
+    if (isAuthenticated && token) return;
+    if (isSigningWithBase) return;
+    if (typeof window === 'undefined') return;
+    const normalized = walletAddress.toLowerCase();
+    const lastAttempt = window.sessionStorage.getItem('brickt:auto-sign:last-address');
+    if (lastAttempt === normalized) return;
+    window.sessionStorage.setItem('brickt:auto-sign:last-address', normalized);
+    void handleSignInWithBase();
+  }, [isConnected, walletAddress, isAuthenticated, token, isSigningWithBase]);
 
   return (
     <>
